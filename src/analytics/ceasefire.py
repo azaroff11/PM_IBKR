@@ -215,7 +215,7 @@ class CeasefireDetector:
                     "[ceasefire] Signal REJECTED by P&L validator: %s",
                     validation.rejection_reason,
                 )
-                strength *= 0.3
+                # NOTE: no strength penalty — [PARTIAL] tag handles visibility
         else:
             # No option data — use budget-constrained estimate
             profit_per_dollar = 1.0 - no_price

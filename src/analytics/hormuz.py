@@ -224,7 +224,7 @@ class HormuzArbEngine:
                     "[hormuz] Signal REJECTED by P&L validator: %s",
                     validation.rejection_reason,
                 )
-                strength *= 0.3
+                # NOTE: no strength penalty — [PARTIAL] tag handles visibility
 
             reasoning_parts.append(
                 f"Хедж CALL {self.hedge_symbol}: премия ${option_premium:.2f} | "

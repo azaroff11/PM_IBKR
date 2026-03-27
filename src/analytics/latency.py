@@ -203,8 +203,7 @@ class LatencyEngine:
             ev_usd = edge_pct / 100 * 0.75 * budget
 
             strength = min(1.0, pm.yes_price / 0.40)
-            if net_worst < 0 and hedge_cost > 0:
-                strength *= 0.3  # Penalty for non-all-weather
+            # NOTE: no strength penalty for hedged signals — [PARTIAL] tag handles visibility
 
             return ArbSignal(
                 source="latency_engine",
