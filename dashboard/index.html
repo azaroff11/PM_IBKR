@@ -1442,7 +1442,15 @@ function addSignal(data, animate = true) {
     loadCalculator(data);
   });
 
-  list.prepend(el);
+  // Dedup: replace existing card for same strategy+slug
+  const signalKey = `${data.strategy}:${data.pm_slug || ''}`;
+  el.setAttribute('data-signal-key', signalKey);
+  const existing = list.querySelector(`[data-signal-key="${signalKey}"]`);
+  if (existing) {
+    list.replaceChild(el, existing);
+  } else {
+    list.prepend(el);
+  }
   // Keep max 30
   while (list.children.length > 30) list.removeChild(list.lastChild);
 
