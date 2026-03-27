@@ -1398,8 +1398,20 @@ function addSignal(data, animate = true) {
   const pmUrl = `https://polymarket.com/event/${data.pm_slug || ''}`;
   const hedgeUrl = data.hedge_symbol ? `https://finance.yahoo.com/quote/${data.hedge_symbol}` : '#';
 
+  // All-weather P&L fields
+  const netBest = (data.net_profit_best || 0);
+  const netWorst = (data.net_profit_worst || 0);
+  const hedgeCost = (data.hedge_cost_usd || 0);
+  const bep = (data.breakeven_prob || 0);
+  const txCosts = (data.tx_costs_usd || 0);
+  const worstColor = netWorst >= 0 ? 'var(--green)' : 'var(--red)';
+  const bestColor = netBest >= 0 ? 'var(--green)' : 'var(--red)';
+  const allWeatherTag = netWorst > 0 && netBest > 0
+    ? '<span style="color:var(--green);font-weight:600;font-size:10px;margin-left:6px;">[ALL-WEATHER]</span>'
+    : '<span style="color:var(--red);font-weight:600;font-size:10px;margin-left:6px;">[PARTIAL]</span>';
+
   el.innerHTML = `
-    <div class="signal-strategy"><a href="${pmUrl}" target="_blank" class="signal-link">${icon} ${data.strategy}</a></div>
+    <div class="signal-strategy"><a href="${pmUrl}" target="_blank" class="signal-link">${icon} ${data.strategy}</a>${allWeatherTag}</div>
     <div class="signal-detail">${data.pm_side} @ $${(data.pm_price || 0).toFixed(3)} → ${data.hedge_type} <a href="${hedgeUrl}" target="_blank" class="hedge-link">${data.hedge_symbol}</a></div>
     <div class="signal-sizing">
       <span class="sizing-label">Грань:</span><span class="sizing-value sizing-edge">${edge.toFixed(1)}%</span>
@@ -1408,6 +1420,13 @@ function addSignal(data, animate = true) {
       <span class="sizing-label">Макс.Убыток:</span><span class="sizing-value sizing-loss">${fmtUsd(maxLoss)}</span>
       <span class="sizing-label">EV:</span><span class="sizing-value sizing-ev">${fmtUsd(ev)}</span>
       <span class="sizing-label">Риск/Доход:</span><span class="sizing-value ${rr >= 1 ? 'sizing-rr-good' : 'sizing-rr-bad'}">${rr.toFixed(2)}x</span>
+    </div>
+    <div class="signal-sizing" style="margin-top:3px;border-top:1px solid rgba(255,255,255,0.05);padding-top:3px;">
+      <span class="sizing-label">Хедж:</span><span class="sizing-value" style="color:var(--text-secondary)">${fmtUsd(hedgeCost)}</span>
+      <span class="sizing-label">Нет P&L:</span><span class="sizing-value" style="color:${bestColor}">${fmtUsd(netBest)}</span>
+      <span class="sizing-label">Худ P&L:</span><span class="sizing-value" style="color:${worstColor}">${fmtUsd(netWorst)}</span>
+      <span class="sizing-label">Безуб:</span><span class="sizing-value" style="color:var(--text-secondary)">${(bep * 100).toFixed(0)}%</span>
+      <span class="sizing-label">TX:</span><span class="sizing-value" style="color:var(--text-dim)">${fmtUsd(txCosts)}</span>
     </div>
     <div class="signal-reasoning">${data.reasoning || ''}</div>
     <div class="signal-bar">

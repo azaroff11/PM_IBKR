@@ -160,6 +160,12 @@ class ArbSignal(BaseEvent):
     max_loss_usd: float = 0.0      # Capital at risk if position goes to $0
     ev_usd: float = 0.0            # Expected value = edge × confidence × depth
     risk_reward: float = 0.0       # max_profit / max_loss (>1 = favorable)
+    # All-weather P&L fields
+    hedge_cost_usd: float = 0.0    # Option premium paid for hedge
+    net_profit_best: float = 0.0   # Net P&L if our thesis is RIGHT (event doesn't happen)
+    net_profit_worst: float = 0.0  # Net P&L if our thesis is WRONG (event happens)
+    breakeven_prob: float = 0.0    # Probability at which net EV = 0
+    tx_costs_usd: float = 0.0     # Total transaction costs (spreads + commissions)
 
 
 # ═══════════════════════════════════════

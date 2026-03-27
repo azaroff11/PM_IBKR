@@ -218,6 +218,17 @@ async def on_signal(event: BaseEvent) -> None:
     if event.confidence < filters.get("min_confidence", 0):
         return
 
+    # Gate: breakeven probability — reject if too high (event too likely)
+    max_breakeven = filters.get("max_breakeven_prob", 0.80)
+    if event.breakeven_prob > max_breakeven and event.breakeven_prob > 0:
+        logger.info(
+            "[signal] Dropped %s — breakeven_prob %.0f%% > max %.0f%%",
+            event.strategy.value,
+            event.breakeven_prob * 100,
+            max_breakeven * 100,
+        )
+        return
+
     data = {
         "strategy": event.strategy.value,
         "pm_slug": event.pm_market_slug,
@@ -234,6 +245,12 @@ async def on_signal(event: BaseEvent) -> None:
         "max_loss_usd": event.max_loss_usd,
         "ev_usd": event.ev_usd,
         "risk_reward": event.risk_reward,
+        # All-weather P&L fields
+        "hedge_cost_usd": event.hedge_cost_usd,
+        "net_profit_best": event.net_profit_best,
+        "net_profit_worst": event.net_profit_worst,
+        "breakeven_prob": event.breakeven_prob,
+        "tx_costs_usd": event.tx_costs_usd,
         "ts": event.timestamp.isoformat(),
     }
     state.signals.append(data)

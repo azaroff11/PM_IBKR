@@ -7,6 +7,8 @@ Unilateral Trump tweets trigger crowd FOMO → buy YES.
 We detect this and signal BUY NO when bilateral = False.
 
 Hedge: OTM Put on USO (if real peace → oil crashes → puts profit).
+
+All-weather: Signal only emitted if net P&L > 0 in BOTH scenarios.
 """
 
 from __future__ import annotations
@@ -15,6 +17,7 @@ import logging
 import time
 from datetime import datetime
 
+from src.analytics.pnl_validator import validate_signal as validate_pnl
 from src.event_bus import EventBus
 from src.models.events import (
     ArbSignal,
@@ -25,6 +28,7 @@ from src.models.events import (
     SentimentEvent,
     Side,
     Strategy,
+    TradFiEvent,
 )
 
 logger = logging.getLogger(__name__)
@@ -40,23 +44,27 @@ class CeasefireDetector:
         signal_cooldown_sec: int = 300,
         hedge_symbol: str = "USO",
         hedge_strike_offset_pct: float = 0.10,  # 10% OTM
+        expected_move_pct: float = 0.08,  # 8% USO drop on real ceasefire
     ) -> None:
         self.bus = bus
         self.pm_yes_threshold = pm_yes_threshold
         self.signal_cooldown_sec = signal_cooldown_sec
         self.hedge_symbol = hedge_symbol
         self.hedge_strike_offset_pct = hedge_strike_offset_pct
+        self.expected_move_pct = expected_move_pct
 
         # State
         self._last_signal_time: float = 0
         self._latest_sentiment: SentimentEvent | None = None
         self._latest_pm_prices: dict[str, PMPriceEvent] = {}
+        self._latest_tradfi: dict[str, TradFiEvent] = {}
         self._ceasefire_keywords_seen = False
         self._bilateral_confirmed = False
 
         # Subscribe to events
         self.bus.subscribe(EventType.SENTIMENT, self._on_sentiment)
         self.bus.subscribe(EventType.PM_PRICE, self._on_pm_price)
+        self.bus.subscribe(EventType.TRADFI, self._on_tradfi)
 
     async def _on_sentiment(self, event: BaseEvent) -> None:
         """Process sentiment events for ceasefire keywords."""
@@ -85,6 +93,37 @@ class CeasefireDetector:
         # Re-evaluate on price update if we have a sentiment trigger
         if self._ceasefire_keywords_seen:
             await self._evaluate()
+
+    async def _on_tradfi(self, event: BaseEvent) -> None:
+        """Track TradFi data for hedge pricing."""
+        assert isinstance(event, TradFiEvent)
+        self._latest_tradfi[event.symbol] = event
+
+    def _get_option_premium(self) -> tuple[float, float, float]:
+        """Get best available option premium for hedge from TradFi data.
+
+        Returns: (premium_per_share, delta, spot_price)
+        """
+        tf = self._latest_tradfi.get(self.hedge_symbol)
+        if not tf or not tf.options:
+            # Fallback: estimate from IV
+            if tf and tf.iv_atm > 0 and tf.spot > 0:
+                # Black-Scholes approximation for 30d ATM: premium ≈ spot × IV × sqrt(T)
+                import math
+                t = 30 / 365
+                premium = tf.spot * tf.iv_atm * math.sqrt(t) * 0.4  # OTM discount
+                return premium, 0.25, tf.spot
+            return 0.0, 0.0, 0.0
+
+        # Find OTM put closest to target delta
+        puts = [o for o in tf.options if o.right == "P" and o.ask > 0]
+        if not puts:
+            return 0.0, 0.0, tf.spot
+
+        # Sort by distance to 0.25 delta (target)
+        puts.sort(key=lambda o: abs(abs(o.delta) - 0.25))
+        best = puts[0]
+        return best.ask, abs(best.delta), tf.spot
 
     async def _evaluate(self) -> None:
         """Core logic: detect fake ceasefire and generate signal."""
@@ -131,35 +170,68 @@ class CeasefireDetector:
             if "iran_confirm" in self._latest_sentiment.keywords_matched:
                 confidence = 0.3  # Iran saying something = lower confidence for NO
 
+        # ═══ CALCULATE INEFFICIENCY SIZE ═══
+        real_prob = 0.05 if not self._bilateral_confirmed else 0.40
+        edge_pct = (yes_price - real_prob) * 100
+
+        depth_usd = ceasefire_market.liquidity_depth or ceasefire_market.volume_24h * 0.1
+        profit_per_dollar = 1.0 - no_price
+        max_profit_usd = profit_per_dollar * depth_usd
+        max_loss_usd = no_price * depth_usd
+        risk_reward = max_profit_usd / max_loss_usd if max_loss_usd > 0 else 0.0
+        ev_usd = edge_pct / 100 * confidence * depth_usd
+
+        # ═══ ALL-WEATHER P&L VALIDATION ═══
+        option_premium, option_delta, spot = self._get_option_premium()
+        pm_notional = min(depth_usd, 1000.0)  # Size for validation: $1000 or depth
+
+        if option_premium > 0 and spot > 0:
+            validation = validate_pnl(
+                pm_side="buy_no",
+                pm_price=no_price,
+                pm_notional=pm_notional,
+                hedge_type="put",
+                option_premium=option_premium,
+                option_delta=option_delta,
+                expected_move_pct=self.expected_move_pct,
+                spot_price=spot,
+                pm_spread=ceasefire_market.spread or 0.02,
+            )
+
+            hedge_cost_usd = validation.hedge_cost_usd
+            net_profit_best = validation.best_case.net_pnl
+            net_profit_worst = validation.worst_case.net_pnl
+            breakeven_prob = validation.breakeven_prob
+            tx_costs_usd = validation.tx_costs_usd
+
+            if not validation.is_valid:
+                logger.info(
+                    "[ceasefire] Signal REJECTED by P&L validator: %s",
+                    validation.rejection_reason,
+                )
+                # Still emit but mark as invalid for dashboard visibility
+                strength *= 0.3  # Penalty
+        else:
+            # No option data — estimate conservatively
+            hedge_cost_usd = 0.0
+            net_profit_best = max_profit_usd
+            net_profit_worst = -max_loss_usd
+            breakeven_prob = 0.5
+            tx_costs_usd = 0.0
+
         # Reasoning
         reasoning_parts = [
             f"PM ДА=${yes_price:.3f} (выше порога {self.pm_yes_threshold})",
             f"Двусторонее подтверждение: {self._bilateral_confirmed}",
             f"Источник: {self._latest_sentiment.source_platform if self._latest_sentiment else 'неизвестно'}",
-            "Стратегия: Купить НЕТ на PM + Купить OTM Пут USO как хедж",
         ]
-
-        # ═══ CALCULATE INEFFICIENCY SIZE ═══
-        # Edge: YES price vs estimated real probability
-        # Without bilateral confirmation, real ceasefire prob ≈ 5%
-        real_prob = 0.05 if not self._bilateral_confirmed else 0.40
-        edge_pct = (yes_price - real_prob) * 100  # % mispricing
-
-        # Available depth: PM liquidity at current price
-        depth_usd = ceasefire_market.liquidity_depth or ceasefire_market.volume_24h * 0.1
-
-        # Max profit: if we buy NO at no_price, profit = (1 - no_price) per dollar
-        profit_per_dollar = 1.0 - no_price
-        max_profit_usd = profit_per_dollar * depth_usd
-
-        # Max loss: we invest at no_price, if wrong → lose full investment
-        max_loss_usd = no_price * depth_usd
-
-        # Risk/Reward ratio (>1 = favorable)
-        risk_reward = max_profit_usd / max_loss_usd if max_loss_usd > 0 else 0.0
-
-        # Expected value: edge weighted by confidence
-        ev_usd = edge_pct / 100 * confidence * depth_usd
+        if option_premium > 0:
+            reasoning_parts.append(
+                f"Хедж PUT {self.hedge_symbol}: премия ${option_premium:.2f} | "
+                f"Лучший=${net_profit_best:.0f} Худший=${net_profit_worst:.0f}"
+            )
+        else:
+            reasoning_parts.append("Хедж: нет данных опционов — консервативная оценка")
 
         signal = ArbSignal(
             source="ceasefire_detector",
@@ -170,8 +242,8 @@ class CeasefireDetector:
             pm_size_usd=0,  # Sized by risk module
             hedge_type=HedgeType.PUT,
             hedge_symbol=self.hedge_symbol,
-            hedge_strike=0,  # Calculated by execution engine based on current spot
-            hedge_expiry="",  # Selected by execution engine
+            hedge_strike=0,
+            hedge_expiry="",
             strength=strength,
             confidence=confidence,
             reasoning=" | ".join(reasoning_parts),
@@ -181,6 +253,11 @@ class CeasefireDetector:
             max_loss_usd=round(max_loss_usd, 0),
             ev_usd=round(ev_usd, 0),
             risk_reward=round(risk_reward, 2),
+            hedge_cost_usd=round(hedge_cost_usd, 2),
+            net_profit_best=round(net_profit_best, 0),
+            net_profit_worst=round(net_profit_worst, 0),
+            breakeven_prob=breakeven_prob,
+            tx_costs_usd=round(tx_costs_usd, 2),
         )
 
         await self.bus.publish(signal)
@@ -188,9 +265,12 @@ class CeasefireDetector:
         self._ceasefire_keywords_seen = False  # Reset trigger
 
         logger.info(
-            "[ceasefire] ⚡ SIGNAL: BUY NO @ $%.3f | strength=%.2f conf=%.2f | %s",
+            "[ceasefire] SIGNAL: BUY NO @ $%.3f | str=%.2f conf=%.2f | best=$%.0f worst=$%.0f bep=%.0f%%",
             no_price,
             strength,
             confidence,
-            signal.reasoning[:100],
+            net_profit_best,
+            net_profit_worst,
+            breakeven_prob * 100,
         )
+
