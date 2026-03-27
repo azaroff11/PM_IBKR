@@ -83,9 +83,13 @@ class HormuzArbEngine:
             await self._evaluate()
 
     async def _on_tradfi(self, event: BaseEvent) -> None:
-        """Track TradFi data for hedge pricing."""
+        """Track TradFi data for hedge pricing. Re-evaluate on first data."""
         assert isinstance(event, TradFiEvent)
+        is_first = event.symbol not in self._latest_tradfi
         self._latest_tradfi[event.symbol] = event
+        if is_first and self._latest_portwatch:
+            self._last_signal_time = 0
+            await self._evaluate()
 
     def _get_option_premium(self) -> tuple[float, float, float]:
         """Get best available CALL option premium for hedge.

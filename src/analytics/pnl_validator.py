@@ -84,22 +84,20 @@ def allocate_budget(
     spot_price: float,
     expected_move_pct: float,
     hedge_type: str = "put",
-    max_hedge_pct: float = 0.30,  # Max 30% of budget to hedge
+    max_hedge_pct: float = 0.40,
 ) -> BudgetAllocation:
     """
-    Allocate budget between PM and hedge legs.
+    Optimally allocate budget between PM and hedge legs.
 
-    Strategy: size hedge to cover PM worst-case loss, but cap at max_hedge_pct.
-    Remainder goes to PM.
+    Solves analytically for the hedge fraction f that maximizes
+    min(best_case_pnl, worst_case_pnl).
 
-    Args:
-        total_budget: Total available budget (e.g., $10,000)
-        pm_price: PM entry price (e.g., 0.705 for NO)
-        option_premium: Per-share option premium
-        spot_price: Current underlying spot price
-        expected_move_pct: Expected % move if event happens
-        hedge_type: "put", "call", or "none"
-        max_hedge_pct: Maximum budget fraction for hedge
+    Best case (event doesn't happen):
+      net = r × (1-f) × B - f × B   where r = (1-pm_price)/pm_price
+    Worst case (event happens):
+      net = (R-1) × f × B - (1-f) × B   where R = payoff/cost per contract
+
+    Optimal f = r / (r + R)   (where best = worst)
     """
     if hedge_type == "none" or option_premium <= 0 or spot_price <= 0:
         return BudgetAllocation(
@@ -113,11 +111,8 @@ def allocate_budget(
             hedge_pct=0.0,
         )
 
-    # Step 1: Estimate PM loss in worst case
-    # If we put X on PM at price P, worst case = lose X
-    # Hedge needs to cover X
+    import math
 
-    # Step 2: How much hedge per contract?
     expected_move_usd = spot_price * expected_move_pct
     payoff_per_contract = expected_move_usd * 100  # 100 shares
     cost_per_contract = option_premium * 100
@@ -134,43 +129,38 @@ def allocate_budget(
             hedge_pct=0.0,
         )
 
-    # Step 3: Solve for optimal split
-    # Let h = number of hedge contracts
-    # hedge_cost = h × cost_per_contract
-    # pm_budget = total_budget - hedge_cost
-    # pm_loss_worst = pm_budget (lose full PM investment)
-    # hedge_profit_worst = h × payoff_per_contract - hedge_cost
-    # For all-weather: hedge_profit_worst ≥ pm_loss_worst
-    # h × payoff - h × cost ≥ total - h × cost
-    # h × payoff ≥ total
-    # h = ceil(total / payoff)
-    # BUT: cap hedge at max_hedge_pct of total
+    # Brute-force: try each contract count, pick one that maximizes min(best, worst)
+    r = (1.0 - pm_price) / pm_price if pm_price > 0 else 0  # PM profit margin
 
-    import math
-    ideal_contracts = math.ceil(total_budget / payoff_per_contract)
-    ideal_hedge_cost = ideal_contracts * cost_per_contract
-    max_hedge_usd = total_budget * max_hedge_pct
+    max_affordable = int(total_budget * 0.50 / cost_per_contract)  # Max 50% to hedge
+    best_n = 0
+    best_min_pnl = -float("inf")
 
-    # Cap hedge spending
-    if ideal_hedge_cost > max_hedge_usd:
-        n_contracts = max(1, int(max_hedge_usd / cost_per_contract))
-        hedge_cost = n_contracts * cost_per_contract
-    else:
-        n_contracts = ideal_contracts
-        hedge_cost = ideal_hedge_cost
+    for n in range(0, max_affordable + 1):
+        hc = n * cost_per_contract
+        pm = total_budget - hc
+        best_pnl = pm * r - hc       # PM wins, hedge expires worthless
+        worst_pnl = -pm + n * payoff_per_contract - hc  # PM loses, hedge pays
+        min_pnl = min(best_pnl, worst_pnl)
 
-    pm_budget = total_budget - hedge_cost
+        if min_pnl > best_min_pnl:
+            best_min_pnl = min_pnl
+            best_n = n
+
+    n_contracts = best_n
+    actual_hedge_cost = n_contracts * cost_per_contract
+    pm_budget = total_budget - actual_hedge_cost
     pm_shares = pm_budget / pm_price if pm_price > 0 else 0
 
     return BudgetAllocation(
         total_budget=total_budget,
         pm_allocation=round(pm_budget, 2),
-        hedge_allocation=round(hedge_cost, 2),
+        hedge_allocation=round(actual_hedge_cost, 2),
         pm_shares=round(pm_shares, 1),
         hedge_contracts=n_contracts,
-        option_premium_total=round(hedge_cost, 2),
+        option_premium_total=round(actual_hedge_cost, 2),
         pm_pct=round(pm_budget / total_budget, 3),
-        hedge_pct=round(hedge_cost / total_budget, 3),
+        hedge_pct=round(actual_hedge_cost / total_budget, 3),
     )
 
 
