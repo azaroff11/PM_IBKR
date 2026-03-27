@@ -253,7 +253,27 @@ async def on_signal(event: BaseEvent) -> None:
         "tx_costs_usd": event.tx_costs_usd,
         "ts": event.timestamp.isoformat(),
     }
-    state.signals.append(data)
+
+    # Deduplicate: replace existing signal of same strategy+slug
+    key = f"{event.strategy.value}:{event.pm_market_slug}"
+    replaced = False
+    for i, existing in enumerate(state.signals):
+        existing_key = f"{existing['strategy']}:{existing['pm_slug']}"
+        if existing_key == key:
+            # Always replace if new signal has hedge data and old doesn't
+            new_has_hedge = data.get("hedge_cost_usd", 0) > 0
+            old_has_hedge = existing.get("hedge_cost_usd", 0) > 0
+            if new_has_hedge and not old_has_hedge:
+                state.signals[i] = data
+                replaced = True
+                break
+            # Otherwise replace if newer (always take latest)
+            state.signals[i] = data
+            replaced = True
+            break
+
+    if not replaced:
+        state.signals.append(data)
     state.signals = state.signals[-100:]
     await state.push_ws({"type": "signal", "data": data})
 

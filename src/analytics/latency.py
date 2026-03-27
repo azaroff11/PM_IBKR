@@ -112,6 +112,11 @@ class LatencyEngine:
     ) -> tuple[float, float, float, float, float]:
         """Run P&L validation and return (hedge_cost, net_best, net_worst, bep, tx_costs)."""
         option_premium, option_delta, spot = self._get_option_premium()
+        logger.info(
+            "[latency] PnL validation: hedge=%s premium=%.2f delta=%.3f spot=%.2f iv_atm=%.3f",
+            self.hedge_symbol, option_premium, option_delta, spot,
+            self._latest_tradfi.get(self.hedge_symbol, TradFiEvent(source="", symbol="")).iv_atm,
+        )
 
         if option_premium > 0 and spot > 0:
             validation = validate_pnl(
@@ -124,6 +129,11 @@ class LatencyEngine:
                 expected_move_pct=self.expected_move_pct,
                 spot_price=spot,
                 pm_spread=pm.spread or 0.02,
+            )
+            logger.info(
+                "[latency] PnL result: hedge_cost=%.2f best=%.0f worst=%.0f bep=%.2f",
+                validation.hedge_cost_usd, validation.best_case.net_pnl,
+                validation.worst_case.net_pnl, validation.breakeven_prob,
             )
             return (
                 validation.hedge_cost_usd,

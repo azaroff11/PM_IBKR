@@ -70,12 +70,18 @@ class SignalAggregator:
         key = f"{signal.strategy.value}:{signal.pm_market_slug}"
         existing = self._active_signals.get(key)
         if existing:
-            # Update only if new signal is stronger
-            composite_new = signal.strength * signal.confidence
-            composite_old = existing.strength * existing.confidence
-            if composite_new <= composite_old:
-                logger.debug("[signals] Existing signal stronger for %s", key)
-                return
+            # Always replace if new signal has hedge data and old doesn't
+            new_has_hedge = signal.hedge_cost_usd > 0
+            old_has_hedge = existing.hedge_cost_usd > 0
+            if new_has_hedge and not old_has_hedge:
+                pass  # Replace: new signal has real hedge, old doesn't
+            else:
+                # Compare composite scores
+                composite_new = signal.strength * signal.confidence
+                composite_old = existing.strength * existing.confidence
+                if composite_new <= composite_old:
+                    logger.debug("[signals] Existing signal stronger for %s", key)
+                    return
 
         # Accept signal
         self._signal_history.append((now, signal))
