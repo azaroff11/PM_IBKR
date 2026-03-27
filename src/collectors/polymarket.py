@@ -55,15 +55,24 @@ class PolymarketCollector(BaseCollector):
 
         for name, slug in self.market_slugs.items():
             try:
-                async with self._session.get(
-                    f"{GAMMA_API}/markets",
-                    params={"slug_contains": slug, "closed": "false"},
-                ) as resp:
-                    resp.raise_for_status()
-                    markets = await resp.json()
+                # Try exact slug match first (more reliable)
+                mkt = None
+                for params in [
+                    {"slug": slug},
+                    {"slug_contains": slug, "closed": "false"},
+                ]:
+                    async with self._session.get(
+                        f"{GAMMA_API}/markets",
+                        params=params,
+                    ) as resp:
+                        resp.raise_for_status()
+                        markets = await resp.json()
 
-                if markets:
-                    mkt = markets[0]
+                    if markets:
+                        mkt = markets[0]
+                        break
+
+                if mkt:
                     self._condition_cache[name] = {
                         "slug": mkt.get("slug", slug),
                         "condition_id": mkt.get("conditionId", ""),
