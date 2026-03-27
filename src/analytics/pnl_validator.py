@@ -1,11 +1,14 @@
 """
-PMarb — Cross-Scenario P&L Validator + Transaction Cost Model.
+PMarb — Cross-Scenario P&L Validator + Budget Allocator + TX Cost Model.
 
 Ensures every signal profits in BOTH scenarios:
 - Scenario A: Event does NOT happen (our thesis is right)
 - Scenario B: Event DOES happen (our thesis is wrong, hedge saves us)
 
 A signal is valid ONLY if net_profit > 0 in both scenarios.
+
+Budget allocator: given total budget (e.g. $10K), calculates optimal
+PM vs options hedge split.
 """
 
 from __future__ import annotations
@@ -14,6 +17,9 @@ import logging
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
+
+# Default budget for signal modeling
+DEFAULT_BUDGET_USD = 10_000.0
 
 
 # ═══════════════════════════════════════
@@ -55,6 +61,120 @@ def estimate_tx_costs(
 
 
 # ═══════════════════════════════════════
+# Budget Allocation
+# ═══════════════════════════════════════
+
+@dataclass
+class BudgetAllocation:
+    """How to split total budget between PM and hedge."""
+    total_budget: float
+    pm_allocation: float        # USD to PM leg
+    hedge_allocation: float     # USD to options hedge
+    pm_shares: float            # Number of PM shares (= pm_alloc / pm_price)
+    hedge_contracts: int        # Number of option contracts
+    option_premium_total: float # Total option cost
+    pm_pct: float               # % of budget to PM
+    hedge_pct: float            # % of budget to hedge
+
+
+def allocate_budget(
+    total_budget: float,
+    pm_price: float,
+    option_premium: float,
+    spot_price: float,
+    expected_move_pct: float,
+    hedge_type: str = "put",
+    max_hedge_pct: float = 0.30,  # Max 30% of budget to hedge
+) -> BudgetAllocation:
+    """
+    Allocate budget between PM and hedge legs.
+
+    Strategy: size hedge to cover PM worst-case loss, but cap at max_hedge_pct.
+    Remainder goes to PM.
+
+    Args:
+        total_budget: Total available budget (e.g., $10,000)
+        pm_price: PM entry price (e.g., 0.705 for NO)
+        option_premium: Per-share option premium
+        spot_price: Current underlying spot price
+        expected_move_pct: Expected % move if event happens
+        hedge_type: "put", "call", or "none"
+        max_hedge_pct: Maximum budget fraction for hedge
+    """
+    if hedge_type == "none" or option_premium <= 0 or spot_price <= 0:
+        return BudgetAllocation(
+            total_budget=total_budget,
+            pm_allocation=total_budget,
+            hedge_allocation=0,
+            pm_shares=total_budget / pm_price if pm_price > 0 else 0,
+            hedge_contracts=0,
+            option_premium_total=0,
+            pm_pct=1.0,
+            hedge_pct=0.0,
+        )
+
+    # Step 1: Estimate PM loss in worst case
+    # If we put X on PM at price P, worst case = lose X
+    # Hedge needs to cover X
+
+    # Step 2: How much hedge per contract?
+    expected_move_usd = spot_price * expected_move_pct
+    payoff_per_contract = expected_move_usd * 100  # 100 shares
+    cost_per_contract = option_premium * 100
+
+    if payoff_per_contract <= 0 or cost_per_contract <= 0:
+        return BudgetAllocation(
+            total_budget=total_budget,
+            pm_allocation=total_budget,
+            hedge_allocation=0,
+            pm_shares=total_budget / pm_price if pm_price > 0 else 0,
+            hedge_contracts=0,
+            option_premium_total=0,
+            pm_pct=1.0,
+            hedge_pct=0.0,
+        )
+
+    # Step 3: Solve for optimal split
+    # Let h = number of hedge contracts
+    # hedge_cost = h × cost_per_contract
+    # pm_budget = total_budget - hedge_cost
+    # pm_loss_worst = pm_budget (lose full PM investment)
+    # hedge_profit_worst = h × payoff_per_contract - hedge_cost
+    # For all-weather: hedge_profit_worst ≥ pm_loss_worst
+    # h × payoff - h × cost ≥ total - h × cost
+    # h × payoff ≥ total
+    # h = ceil(total / payoff)
+    # BUT: cap hedge at max_hedge_pct of total
+
+    import math
+    ideal_contracts = math.ceil(total_budget / payoff_per_contract)
+    ideal_hedge_cost = ideal_contracts * cost_per_contract
+    max_hedge_usd = total_budget * max_hedge_pct
+
+    # Cap hedge spending
+    if ideal_hedge_cost > max_hedge_usd:
+        n_contracts = max(1, int(max_hedge_usd / cost_per_contract))
+        hedge_cost = n_contracts * cost_per_contract
+    else:
+        n_contracts = ideal_contracts
+        hedge_cost = ideal_hedge_cost
+
+    pm_budget = total_budget - hedge_cost
+    pm_shares = pm_budget / pm_price if pm_price > 0 else 0
+
+    return BudgetAllocation(
+        total_budget=total_budget,
+        pm_allocation=round(pm_budget, 2),
+        hedge_allocation=round(hedge_cost, 2),
+        pm_shares=round(pm_shares, 1),
+        hedge_contracts=n_contracts,
+        option_premium_total=round(hedge_cost, 2),
+        pm_pct=round(pm_budget / total_budget, 3),
+        hedge_pct=round(hedge_cost / total_budget, 3),
+    )
+
+
+# ═══════════════════════════════════════
 # Scenario Analysis
 # ═══════════════════════════════════════
 
@@ -77,6 +197,7 @@ class ValidationResult:
     breakeven_prob: float
     hedge_cost_usd: float
     tx_costs_usd: float
+    budget: BudgetAllocation | None = None
     rejection_reason: str = ""
 
 
@@ -92,13 +213,27 @@ def validate_signal(
     pm_spread: float = 0.02,
     option_bid_ask: float = 0.10,
     min_net_profit: float = 0.0,
+    total_budget: float = DEFAULT_BUDGET_USD,
 ) -> ValidationResult:
     """
     Validate that a signal profits in BOTH scenarios.
 
-    Returns ValidationResult with is_valid=True only if net P&L > min_net_profit
-    in both best and worst case.
+    Uses budget allocator to determine optimal PM/hedge split,
+    then validates net P&L > min_net_profit in both cases.
     """
+
+    # ─── BUDGET ALLOCATION ───
+    budget = allocate_budget(
+        total_budget=total_budget,
+        pm_price=pm_price,
+        option_premium=option_premium,
+        spot_price=spot_price,
+        expected_move_pct=expected_move_pct,
+        hedge_type=hedge_type,
+    )
+
+    pm_notional = budget.pm_allocation
+    n_contracts = budget.hedge_contracts
 
     # ─── PM LEG P&L ───
     if pm_side == "buy_no":
@@ -111,23 +246,15 @@ def validate_signal(
         pm_pnl_worst = -pm_notional
 
     # ─── HEDGE LEG ───
-    if hedge_type == "none":
+    if hedge_type == "none" or n_contracts == 0:
         hedge_cost = 0.0
         hedge_pnl_best = 0.0
         hedge_pnl_worst = 0.0
-        n_contracts = 0
     else:
-        # How many contracts needed to cover PM loss
         expected_move_usd = spot_price * expected_move_pct
-        payoff_per_contract = expected_move_usd * 100  # 100 shares per contract
+        payoff_per_contract = expected_move_usd * 100
 
-        if payoff_per_contract > 0:
-            # Size hedge to cover PM loss
-            n_contracts = max(1, int(abs(pm_pnl_worst) / payoff_per_contract + 0.5))
-        else:
-            n_contracts = 1
-
-        hedge_cost = option_premium * 100 * n_contracts
+        hedge_cost = budget.option_premium_total
 
         # Best case (event doesn't happen): option expires worthless
         hedge_pnl_best = -hedge_cost
@@ -148,9 +275,6 @@ def validate_signal(
     net_worst = pm_pnl_worst + hedge_pnl_worst - costs.total
 
     # ─── BREAKEVEN PROBABILITY ───
-    # At what event probability does EV = 0?
-    # EV = (1-p) * net_best + p * net_worst = 0
-    # p = net_best / (net_best - net_worst)
     denom = net_best - net_worst
     if denom != 0:
         breakeven_prob = net_best / denom
@@ -190,5 +314,7 @@ def validate_signal(
         breakeven_prob=round(breakeven_prob, 3),
         hedge_cost_usd=round(hedge_cost, 2),
         tx_costs_usd=round(costs.total, 2),
+        budget=budget,
         rejection_reason=rejection_reason,
     )
+

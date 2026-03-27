@@ -183,13 +183,12 @@ class CeasefireDetector:
 
         # ═══ ALL-WEATHER P&L VALIDATION ═══
         option_premium, option_delta, spot = self._get_option_premium()
-        pm_notional = min(depth_usd, 1000.0)  # Size for validation: $1000 or depth
 
         if option_premium > 0 and spot > 0:
             validation = validate_pnl(
                 pm_side="buy_no",
                 pm_price=no_price,
-                pm_notional=pm_notional,
+                pm_notional=0,  # Overridden by budget allocator ($10K default)
                 hedge_type="put",
                 option_premium=option_premium,
                 option_delta=option_delta,

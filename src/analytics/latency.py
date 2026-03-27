@@ -8,6 +8,8 @@ Exploits publication schedule lags:
 
 If a contract expires BETWEEN data updates, the oracle
 cannot prove the event → NO wins by default.
+
+All-weather: Signal only emitted if net P&L > 0 in BOTH scenarios.
 """
 
 from __future__ import annotations
@@ -15,6 +17,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta
 
+from src.analytics.pnl_validator import validate_signal as validate_pnl
 from src.event_bus import EventBus
 from src.models.events import (
     ArbSignal,
@@ -25,6 +28,7 @@ from src.models.events import (
     PMPriceEvent,
     Side,
     Strategy,
+    TradFiEvent,
 )
 
 logger = logging.getLogger(__name__)
@@ -42,17 +46,23 @@ class LatencyEngine:
         bus: EventBus,
         psm_lag_months: int = 2,
         signal_cooldown_sec: int = 3600,
+        hedge_symbol: str = "BNO",
+        expected_move_pct: float = 0.10,  # 10% BNO move on surprise event
     ) -> None:
         self.bus = bus
         self.psm_lag_months = psm_lag_months
         self.signal_cooldown_sec = signal_cooldown_sec
+        self.hedge_symbol = hedge_symbol
+        self.expected_move_pct = expected_move_pct
 
         self._latest_eia: EIAEvent | None = None
         self._latest_pm_prices: dict[str, PMPriceEvent] = {}
+        self._latest_tradfi: dict[str, TradFiEvent] = {}
         self._last_signal_time: float = 0
 
         self.bus.subscribe(EventType.EIA, self._on_eia)
         self.bus.subscribe(EventType.PM_PRICE, self._on_pm_price)
+        self.bus.subscribe(EventType.TRADFI, self._on_tradfi)
 
     async def _on_eia(self, event: BaseEvent) -> None:
         assert isinstance(event, EIAEvent)
@@ -62,6 +72,61 @@ class LatencyEngine:
         assert isinstance(event, PMPriceEvent)
         self._latest_pm_prices[event.market_slug] = event
         await self._evaluate()
+
+    async def _on_tradfi(self, event: BaseEvent) -> None:
+        """Track TradFi data for hedge pricing."""
+        assert isinstance(event, TradFiEvent)
+        self._latest_tradfi[event.symbol] = event
+
+    def _get_option_premium(self) -> tuple[float, float, float]:
+        """Get best available CALL option premium for hedge.
+
+        Returns: (premium_per_share, delta, spot_price)
+        """
+        tf = self._latest_tradfi.get(self.hedge_symbol)
+        if not tf or not tf.options:
+            if tf and tf.iv_atm > 0 and tf.spot > 0:
+                import math
+                t = 30 / 365
+                premium = tf.spot * tf.iv_atm * math.sqrt(t) * 0.4
+                return premium, 0.25, tf.spot
+            return 0.0, 0.0, 0.0
+
+        calls = [o for o in tf.options if o.right == "C" and o.ask > 0]
+        if not calls:
+            return 0.0, 0.0, tf.spot
+
+        calls.sort(key=lambda o: abs(abs(o.delta) - 0.25))
+        best = calls[0]
+        return best.ask, abs(best.delta), tf.spot
+
+    def _run_pnl_validation(
+        self, pm: PMPriceEvent, hedge_type_str: str
+    ) -> tuple[float, float, float, float, float]:
+        """Run P&L validation and return (hedge_cost, net_best, net_worst, bep, tx_costs)."""
+        option_premium, option_delta, spot = self._get_option_premium()
+
+        if option_premium > 0 and spot > 0:
+            validation = validate_pnl(
+                pm_side="buy_no",
+                pm_price=pm.no_price,
+                pm_notional=0,  # Will be overridden by budget allocator
+                hedge_type=hedge_type_str,
+                option_premium=option_premium,
+                option_delta=option_delta,
+                expected_move_pct=self.expected_move_pct,
+                spot_price=spot,
+                pm_spread=pm.spread or 0.02,
+            )
+            return (
+                validation.hedge_cost_usd,
+                validation.best_case.net_pnl,
+                validation.worst_case.net_pnl,
+                validation.breakeven_prob,
+                validation.tx_costs_usd,
+            )
+
+        return 0.0, 0.0, 0.0, 0.5, 0.0
 
     async def _evaluate(self) -> None:
         import time
@@ -97,18 +162,23 @@ class LatencyEngine:
             days_until_tuesday = 7
         next_update = now + timedelta(days=days_until_tuesday)
 
-        # If it's Wednesday-Monday (data won't update until next Tuesday)
-        # and YES price is high → aggressive NO opportunity
         days_to_update = (next_update - now).days
         if days_to_update >= 2 and pm.yes_price > 0.20:
             # Inefficiency sizing
-            real_prob = 0.05  # During data blackout, oracle can't confirm → ~5% real chance
+            real_prob = 0.05
             edge_pct = (pm.yes_price - real_prob) * 100
             depth_usd = pm.liquidity_depth or pm.volume_24h * 0.1
             max_profit_usd = (1.0 - pm.no_price) * depth_usd
             max_loss_usd = pm.no_price * depth_usd
             risk_reward = max_profit_usd / max_loss_usd if max_loss_usd > 0 else 0.0
             ev_usd = edge_pct / 100 * 0.75 * depth_usd
+
+            # All-weather P&L
+            hedge_cost, net_best, net_worst, bep, tx_costs = self._run_pnl_validation(pm, "call")
+
+            strength = min(1.0, pm.yes_price / 0.40)
+            if net_worst < 0 and hedge_cost > 0:
+                strength *= 0.3  # Penalty for non-all-weather
 
             return ArbSignal(
                 source="latency_engine",
@@ -117,8 +187,8 @@ class LatencyEngine:
                 pm_side=Side.BUY_NO,
                 pm_price=pm.no_price,
                 hedge_type=HedgeType.CALL,
-                hedge_symbol="BNO",
-                strength=min(1.0, pm.yes_price / 0.40),
+                hedge_symbol=self.hedge_symbol,
+                strength=strength,
                 confidence=0.75,
                 reasoning=(
                     f"PortWatch пауза: {days_to_update}д до обновления | "
@@ -131,6 +201,11 @@ class LatencyEngine:
                 max_loss_usd=round(max_loss_usd, 0),
                 ev_usd=round(ev_usd, 0),
                 risk_reward=round(risk_reward, 2),
+                hedge_cost_usd=round(hedge_cost, 2),
+                net_profit_best=round(net_best, 0),
+                net_profit_worst=round(net_worst, 0),
+                breakeven_prob=bep,
+                tx_costs_usd=round(tx_costs, 2),
             )
         return None
 
@@ -144,17 +219,16 @@ class LatencyEngine:
         if not self._latest_eia or self._latest_eia.report_type != "psm":
             return None
 
-        # PSM data is ~2 months behind
         lag_days = self._latest_eia.lag_days
-        if lag_days >= 45 and pm.yes_price > 0.15:  # 45+ days lag
-            # Inefficiency sizing
-            edge_pct = (pm.yes_price - 0.03) * 100  # Near-zero real probability
+        if lag_days >= 45 and pm.yes_price > 0.15:
+            edge_pct = (pm.yes_price - 0.03) * 100
             depth_usd = pm.liquidity_depth or pm.volume_24h * 0.1
             max_profit_usd = (1.0 - pm.no_price) * depth_usd
             max_loss_usd = pm.no_price * depth_usd
             risk_reward = max_profit_usd / max_loss_usd if max_loss_usd > 0 else 0.0
             ev_usd = edge_pct / 100 * 0.85 * depth_usd
 
+            # PSM has no hedge (pure info edge)
             return ArbSignal(
                 source="latency_engine",
                 strategy=Strategy.LATENCY_ARB,
@@ -175,6 +249,11 @@ class LatencyEngine:
                 max_loss_usd=round(max_loss_usd, 0),
                 ev_usd=round(ev_usd, 0),
                 risk_reward=round(risk_reward, 2),
+                hedge_cost_usd=0.0,
+                net_profit_best=round(max_profit_usd, 0),
+                net_profit_worst=round(-max_loss_usd, 0),
+                breakeven_prob=0.5,
+                tx_costs_usd=0.0,
             )
         return None
 
@@ -184,7 +263,6 @@ class LatencyEngine:
         now = datetime.utcnow()
         schedule = {}
 
-        # Next PortWatch (Tuesday 14:00 UTC ≈ 9:00 ET)
         days_to_tue = (PORTWATCH_UPDATE_DAY - now.weekday()) % 7
         if days_to_tue == 0 and now.hour >= 14:
             days_to_tue = 7
@@ -192,7 +270,6 @@ class LatencyEngine:
         next_pw = next_pw.replace(hour=14, minute=0, second=0, microsecond=0)
         schedule["portwatch"] = next_pw.isoformat()
 
-        # Next EIA WPSR (Wednesday)
         days_to_wed = (EIA_WPSR_UPDATE_DAY - now.weekday()) % 7
         if days_to_wed == 0 and now.hour >= 15:
             days_to_wed = 7
@@ -201,3 +278,4 @@ class LatencyEngine:
         schedule["eia_wpsr"] = next_eia.isoformat()
 
         return schedule
+
