@@ -190,11 +190,9 @@ class HormuzArbEngine:
         edge_pct = (yes_price - real_prob) * 100
 
         depth_usd = hormuz_market.liquidity_depth or hormuz_market.volume_24h * 0.1
-        profit_per_dollar = 1.0 - no_price
-        max_profit_usd = profit_per_dollar * depth_usd
-        max_loss_usd = no_price * depth_usd
-        risk_reward = max_profit_usd / max_loss_usd if max_loss_usd > 0 else 0.0
-        ev_usd = edge_pct / 100 * confidence * depth_usd
+
+        from src.analytics.pnl_validator import DEFAULT_BUDGET_USD
+        budget = DEFAULT_BUDGET_USD
 
         # ═══ ALL-WEATHER P&L VALIDATION ═══
         option_premium, option_delta, spot = self._get_option_premium()
@@ -203,7 +201,7 @@ class HormuzArbEngine:
             validation = validate_pnl(
                 pm_side="buy_no",
                 pm_price=no_price,
-                pm_notional=0,  # Overridden by budget allocator ($10K default)
+                pm_notional=0,
                 hedge_type="call",
                 option_premium=option_premium,
                 option_delta=option_delta,
@@ -218,6 +216,9 @@ class HormuzArbEngine:
             breakeven_prob = validation.breakeven_prob
             tx_costs_usd = validation.tx_costs_usd
 
+            max_profit_usd = validation.best_case.net_pnl
+            max_loss_usd = abs(validation.worst_case.net_pnl)
+
             if not validation.is_valid:
                 logger.info(
                     "[hormuz] Signal REJECTED by P&L validator: %s",
@@ -230,12 +231,18 @@ class HormuzArbEngine:
                 f"Лучший=${net_profit_best:.0f} Худший=${net_profit_worst:.0f}"
             )
         else:
+            profit_per_dollar = 1.0 - no_price
+            max_profit_usd = profit_per_dollar * budget
+            max_loss_usd = no_price * budget
             hedge_cost_usd = 0.0
             net_profit_best = max_profit_usd
             net_profit_worst = -max_loss_usd
             breakeven_prob = 0.5
             tx_costs_usd = 0.0
             reasoning_parts.append("Хедж: нет данных опционов — консервативная оценка")
+
+        risk_reward = max_profit_usd / max_loss_usd if max_loss_usd > 0 else 0.0
+        ev_usd = edge_pct / 100 * confidence * budget
 
         signal = ArbSignal(
             source="hormuz_arb",

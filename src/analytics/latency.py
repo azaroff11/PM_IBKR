@@ -175,13 +175,22 @@ class LatencyEngine:
             real_prob = 0.05
             edge_pct = (pm.yes_price - real_prob) * 100
             depth_usd = pm.liquidity_depth or pm.volume_24h * 0.1
-            max_profit_usd = (1.0 - pm.no_price) * depth_usd
-            max_loss_usd = pm.no_price * depth_usd
-            risk_reward = max_profit_usd / max_loss_usd if max_loss_usd > 0 else 0.0
-            ev_usd = edge_pct / 100 * 0.75 * depth_usd
+
+            from src.analytics.pnl_validator import DEFAULT_BUDGET_USD
+            budget = DEFAULT_BUDGET_USD
 
             # All-weather P&L
             hedge_cost, net_best, net_worst, bep, tx_costs = self._run_pnl_validation(pm, "call")
+
+            if hedge_cost > 0:
+                max_profit_usd = net_best
+                max_loss_usd = abs(net_worst)
+            else:
+                max_profit_usd = (1.0 - pm.no_price) * budget
+                max_loss_usd = pm.no_price * budget
+
+            risk_reward = max_profit_usd / max_loss_usd if max_loss_usd > 0 else 0.0
+            ev_usd = edge_pct / 100 * 0.75 * budget
 
             strength = min(1.0, pm.yes_price / 0.40)
             if net_worst < 0 and hedge_cost > 0:
@@ -230,10 +239,12 @@ class LatencyEngine:
         if lag_days >= 45 and pm.yes_price > 0.15:
             edge_pct = (pm.yes_price - 0.03) * 100
             depth_usd = pm.liquidity_depth or pm.volume_24h * 0.1
-            max_profit_usd = (1.0 - pm.no_price) * depth_usd
-            max_loss_usd = pm.no_price * depth_usd
+            from src.analytics.pnl_validator import DEFAULT_BUDGET_USD
+            budget = DEFAULT_BUDGET_USD
+            max_profit_usd = (1.0 - pm.no_price) * budget
+            max_loss_usd = pm.no_price * budget
             risk_reward = max_profit_usd / max_loss_usd if max_loss_usd > 0 else 0.0
-            ev_usd = edge_pct / 100 * 0.85 * depth_usd
+            ev_usd = edge_pct / 100 * 0.85 * budget
 
             # PSM has no hedge (pure info edge)
             return ArbSignal(
