@@ -1,0 +1,1722 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PMarb — Терминал Арбитража Предсказаний</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg-primary: #0a0e17;
+  --bg-secondary: #111827;
+  --bg-card: #1a2332;
+  --bg-card-hover: #1f2b3d;
+  --border: #2a3a4e;
+  --border-active: #3b82f6;
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --text-dim: #64748b;
+  --accent-blue: #3b82f6;
+  --accent-cyan: #06b6d4;
+  --accent-green: #10b981;
+  --accent-red: #ef4444;
+  --accent-amber: #f59e0b;
+  --accent-purple: #8b5cf6;
+  --accent-pink: #ec4899;
+  --glow-blue: rgba(59, 130, 246, 0.15);
+  --glow-green: rgba(16, 185, 129, 0.15);
+  --glow-red: rgba(239, 68, 68, 0.15);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ─── Header ─── */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 24px;
+  background: linear-gradient(180deg, #111827 0%, var(--bg-primary) 100%);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  backdrop-filter: blur(12px);
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.logo {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 18px;
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  letter-spacing: -0.5px;
+}
+
+.mode-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.mode-dry { background: var(--glow-blue); color: var(--accent-blue); border: 1px solid rgba(59, 130, 246, 0.3); }
+.mode-live { background: var(--glow-red); color: var(--accent-red); border: 1px solid rgba(239, 68, 68, 0.3); animation: pulse 2s ease infinite; }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.ws-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ws-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-red);
+}
+
+.ws-dot.connected { background: var(--accent-green); box-shadow: 0 0 8px var(--accent-green); }
+
+/* ─── Grid Layout ─── */
+.dashboard {
+  display: grid;
+  grid-template-columns: 320px 1fr 350px;
+  grid-template-rows: auto 1fr;
+  gap: 1px;
+  background: var(--border);
+  min-height: calc(100vh - 49px);
+}
+
+/* ─── Cards ─── */
+.panel {
+  background: var(--bg-secondary);
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.panel-title {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-secondary);
+}
+
+.panel-count {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--text-dim);
+  background: var(--bg-card);
+  padding: 2px 8px;
+  border-radius: 8px;
+}
+
+/* ─── Data Feeds Panel ─── */
+.feed-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: var(--bg-card);
+  border-radius: 8px;
+  margin-bottom: 6px;
+  border: 1px solid transparent;
+  transition: all 0.2s;
+}
+
+.feed-item:hover { background: var(--bg-card-hover); border-color: var(--border); }
+.feed-item.active { border-left: 3px solid var(--accent-green); }
+.feed-item.error { border-left: 3px solid var(--accent-red); }
+.feed-item.idle { border-left: 3px solid var(--text-dim); }
+
+.feed-name {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.feed-meta {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--text-dim);
+  text-align: right;
+}
+
+.feed-count {
+  color: var(--accent-cyan);
+  font-weight: 500;
+}
+
+/* ─── Markets Panel (Center) ─── */
+.markets-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.market-card {
+  background: var(--bg-card);
+  border-radius: 12px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  transition: all 0.3s;
+}
+
+.market-card:hover { border-color: var(--accent-blue); box-shadow: 0 0 20px var(--glow-blue); }
+
+.market-name {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: var(--text-primary);
+}
+
+.market-tag {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+.tag-pm { background: rgba(139, 92, 246, 0.2); color: var(--accent-purple); }
+.tag-tradfi { background: rgba(6, 182, 212, 0.2); color: var(--accent-cyan); }
+
+.price-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(42, 58, 78, 0.5);
+}
+
+.price-row:last-child { border-bottom: none; }
+
+.price-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.price-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.price-yes { color: var(--accent-green); }
+.price-no { color: var(--accent-red); }
+.price-spot { color: var(--accent-amber); }
+.price-iv { color: var(--accent-cyan); }
+
+/* ─── Arb Legs Visual ─── */
+.arb-connection {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.08), rgba(139, 92, 246, 0.08));
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  grid-column: 1 / -1;
+  position: relative;
+}
+
+.arb-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.arb-strategy {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-blue);
+}
+
+.arb-strength {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+}
+
+.arb-legs {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 12px;
+  align-items: center;
+}
+
+.arb-leg {
+  background: var(--bg-card);
+  border-radius: 8px;
+  padding: 12px;
+  border: 1px solid var(--border);
+}
+
+.arb-leg-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.leg-pm .arb-leg-title { color: var(--accent-purple); }
+.leg-tradfi .arb-leg-title { color: var(--accent-cyan); }
+
+.arb-arrow {
+  font-size: 20px;
+  color: var(--accent-blue);
+  text-align: center;
+}
+
+/* ─── Signals Panel ─── */
+.signal-item {
+  background: var(--bg-card);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 8px;
+  border-left: 3px solid var(--accent-blue);
+  animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+  from { transform: translateX(20px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+.signal-strategy {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-blue);
+  margin-bottom: 4px;
+}
+
+.signal-detail {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.signal-reasoning {
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+
+.signal-bar {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.signal-sizing {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px 12px;
+  margin-top: 6px;
+  padding: 6px 8px;
+  background: rgba(100, 200, 255, 0.05);
+  border-radius: 6px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+}
+
+.sizing-label { color: var(--text-dim); }
+.sizing-value { text-align: right; font-weight: 600; }
+.sizing-edge { color: var(--accent-cyan); }
+.sizing-depth { color: var(--text-secondary); }
+.sizing-profit { color: var(--accent-green); }
+.sizing-loss { color: var(--accent-red); }
+.sizing-ev { color: var(--accent-amber); }
+.sizing-rr-good { color: var(--accent-green); }
+.sizing-rr-bad { color: var(--accent-red); }
+
+.bar-strength, .bar-confidence {
+  height: 4px;
+  border-radius: 2px;
+  flex: 1;
+}
+
+.bar-strength { background: linear-gradient(90deg, var(--accent-blue), var(--accent-cyan)); }
+.bar-confidence { background: linear-gradient(90deg, var(--accent-green), var(--accent-amber)); }
+
+/* ─── Risk Panel ─── */
+.risk-strip {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 8px 20px;
+  background: var(--bg-secondary);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+}
+
+.risk-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+}
+
+.risk-ok { color: var(--accent-green); }
+.risk-warn { color: var(--accent-amber); }
+.risk-halt { color: var(--accent-red); font-weight: 700; animation: pulse 1s ease infinite; }
+
+/* ─── PortWatch Panel ─── */
+.portwatch-viz {
+  background: var(--bg-card);
+  border-radius: 10px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  margin-bottom: 10px;
+}
+
+.pw-bar-container {
+  background: var(--bg-primary);
+  border-radius: 6px;
+  height: 24px;
+  position: relative;
+  overflow: hidden;
+  margin-top: 8px;
+}
+
+.pw-bar-fill {
+  height: 100%;
+  border-radius: 6px;
+  transition: width 1s ease;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.pw-threshold {
+  position: absolute;
+  left: 80%;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent-red);
+}
+
+.pw-threshold-label {
+  position: absolute;
+  left: 80%;
+  top: -16px;
+  font-size: 10px;
+  color: var(--accent-red);
+  transform: translateX(-50%);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* ─── Sentiment Feed ─── */
+.sentiment-item {
+  padding: 8px 10px;
+  background: var(--bg-card);
+  border-radius: 6px;
+  margin-bottom: 4px;
+  font-size: 11px;
+  border-left: 2px solid var(--accent-purple);
+}
+
+.sentiment-keywords {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.kw-tag {
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 3px;
+  text-transform: uppercase;
+}
+
+.kw-ceasefire { background: rgba(16, 185, 129, 0.2); color: var(--accent-green); }
+.kw-escalation { background: rgba(239, 68, 68, 0.2); color: var(--accent-red); }
+
+/* ─── Scrollbar ─── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+
+/* ─── Empty State ─── */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  color: var(--text-dim);
+  font-size: 13px;
+  text-align: center;
+}
+
+.empty-icon {
+  font-size: 32px;
+  margin-bottom: 8px;
+  opacity: 0.5;
+}
+
+/* ─── Signal Links ─── */
+.signal-link {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px dotted var(--text-dim);
+  transition: color 0.2s, border-color 0.2s;
+}
+.signal-link:hover {
+  color: var(--accent-cyan);
+  border-color: var(--accent-cyan);
+}
+.hedge-link {
+  color: var(--accent-amber);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--accent-amber);
+  transition: opacity 0.2s;
+}
+.hedge-link:hover { opacity: 0.7; }
+
+/* ─── Calculator Panel ─── */
+.calc-panel {
+  background: var(--bg-card);
+  border-radius: 10px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  margin-top: 12px;
+}
+.calc-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 10px;
+}
+.calc-input-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.calc-slider {
+  flex: 1;
+  -webkit-appearance: none;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--border);
+  outline: none;
+}
+.calc-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent-cyan);
+  cursor: pointer;
+}
+.calc-amount {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent-cyan);
+  min-width: 80px;
+  text-align: right;
+}
+.calc-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px 14px;
+  font-size: 12px;
+  font-family: 'JetBrains Mono', monospace;
+}
+.calc-label { color: var(--text-dim); }
+.calc-val { text-align: right; font-weight: 600; }
+.calc-profit { color: var(--accent-green); }
+.calc-loss { color: var(--accent-red); }
+.calc-neutral { color: var(--text-secondary); }
+.calc-ev-pos { color: var(--accent-green); }
+.calc-ev-neg { color: var(--accent-red); }
+.calc-hint {
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-top: 8px;
+  text-align: center;
+  font-style: italic;
+}
+.calc-inactive {
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 12px;
+  padding: 12px;
+}
+
+/* ─── Parser Config Panel ─── */
+.config-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  padding: 10px 14px;
+  background: var(--bg-card);
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  margin-top: 12px;
+  transition: border-color 0.2s;
+}
+.config-toggle:hover { border-color: var(--accent-cyan); }
+.config-toggle-title { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.config-toggle-arrow { color: var(--text-dim); transition: transform 0.3s; }
+.config-toggle-arrow.open { transform: rotate(180deg); }
+.config-body {
+  display: none;
+  padding: 12px;
+  background: var(--bg-card);
+  border-radius: 0 0 10px 10px;
+  border: 1px solid var(--border);
+  border-top: none;
+  margin-top: -1px;
+}
+.config-body.open { display: block; }
+.config-stats {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 10px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.config-stats span { font-weight: 700; color: var(--accent-cyan); }
+.cat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.cat-card {
+  background: var(--bg-panel);
+  border-radius: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  transition: border-color 0.2s;
+}
+.cat-card:hover { border-color: var(--accent-cyan); }
+.cat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 5px;
+}
+.cat-name { font-size: 12px; font-weight: 600; color: var(--text-primary); }
+.cat-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: rgba(0,255,157,0.15);
+  color: var(--accent-green);
+  font-weight: 700;
+}
+.cat-badge.zero { background: rgba(255,255,255,0.05); color: var(--text-dim); }
+.cat-keywords {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-bottom: 5px;
+}
+.kw-tag {
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(0,176,255,0.1);
+  color: var(--accent-cyan);
+  font-family: 'JetBrains Mono', monospace;
+}
+.cat-hedges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+.hedge-chip {
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(255,170,0,0.15);
+  color: var(--accent-amber);
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+}
+.config-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-dim);
+  margin: 10px 0 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.threshold-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  margin-bottom: 4px;
+  font-family: 'JetBrains Mono', monospace;
+}
+.threshold-label { color: var(--text-dim); min-width: 130px; }
+.threshold-val { color: var(--accent-green); font-weight: 600; }
+.scoring-row {
+  display: flex;
+  gap: 12px;
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+}
+.scoring-item { color: var(--text-dim); }
+.scoring-item span { color: var(--accent-cyan); font-weight: 700; }
+
+/* --- Signal Settings Panel --- */
+.settings-toggle {
+  display: flex; align-items: center; justify-content: space-between;
+  cursor: pointer; padding: 8px 12px; margin-bottom: 6px;
+  background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border);
+  transition: border-color 0.2s;
+}
+.settings-toggle:hover { border-color: var(--accent-amber); }
+.settings-body { display: none; padding: 10px; background: var(--bg-card); border-radius: 0 0 8px 8px; border: 1px solid var(--border); border-top: none; margin-top: -7px; margin-bottom: 8px; max-height: 60vh; overflow-y: auto; }
+.settings-body.open { display: block; }
+.settings-section { margin-bottom: 10px; }
+.settings-section-title { font-size: 10px; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; padding-bottom: 3px; border-bottom: 1px solid var(--border); }
+.strat-toggle-row { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; font-size: 12px; }
+.strat-toggle-row label { color: var(--text-secondary); flex: 1; cursor: pointer; }
+.toggle-switch { position: relative; width: 32px; height: 18px; }
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
+.toggle-slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background: var(--border); border-radius: 9px; transition: 0.3s; }
+.toggle-slider:before { content: ''; position: absolute; height: 14px; width: 14px; left: 2px; bottom: 2px; background: var(--text-dim); border-radius: 50%; transition: 0.3s; }
+.toggle-switch input:checked + .toggle-slider { background: var(--accent-green); }
+.toggle-switch input:checked + .toggle-slider:before { transform: translateX(14px); background: white; }
+.param-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; font-size: 11px; font-family: 'JetBrains Mono', monospace; }
+.param-label { color: var(--text-dim); min-width: 100px; }
+.param-input { flex: 1; background: var(--bg-panel); border: 1px solid var(--border); border-radius: 4px; color: var(--text-primary); padding: 3px 6px; font-size: 11px; font-family: 'JetBrains Mono', monospace; width: 60px; text-align: right; }
+.param-input:focus { border-color: var(--accent-cyan); outline: none; }
+.param-unit { color: var(--text-dim); font-size: 10px; min-width: 20px; }
+.settings-save { width: 100%; padding: 8px; border: none; border-radius: 6px; background: var(--accent-green); color: #000; font-weight: 700; font-size: 12px; cursor: pointer; transition: opacity 0.2s; margin-top: 8px; }
+.settings-save:hover { opacity: 0.85; }
+.settings-save.saving { background: var(--accent-amber); }
+.settings-save.saved { background: var(--accent-cyan); }
+</style>
+</head>
+<body>
+
+<!-- ═══ Header ═══ -->
+<div class="header">
+  <div class="header-left">
+    <span class="logo">◈ PMarb</span>
+    <span class="mode-badge mode-dry" id="modeBadge">DRY RUN</span>
+  </div>
+  <div class="header-right">
+    <div class="ws-status">
+      <div class="ws-dot" id="wsDot"></div>
+      <span id="wsLabel">disconnected</span>
+    </div>
+    <span id="uptime">00:00:00</span>
+    <span id="clock"></span>
+  </div>
+</div>
+
+<!-- ═══ Risk Strip ═══ -->
+<div class="risk-strip">
+  <div class="risk-item" id="riskStatus">
+    <span>◈</span>
+    <span class="risk-ok">СИСТЕМА ОК</span>
+  </div>
+  <div class="risk-item">
+    <span>◆</span>
+    <span>Залочено: $<span id="lockedCapital">0</span></span>
+  </div>
+  <div class="risk-item">
+    <span>◆</span>
+    <span>Позиции: <span id="posCount">0</span></span>
+  </div>
+  <div class="risk-item">
+    <span>◆</span>
+    <span>USDC: <span id="usdcStatus" class="risk-ok">OK</span></span>
+  </div>
+  <div class="risk-item">
+    <span>◆</span>
+    <span>События: <span id="totalEvents">0</span></span>
+  </div>
+</div>
+
+<!-- ═══ Dashboard Grid ═══ -->
+<div class="dashboard">
+
+  <!-- Left: Data Feeds -->
+  <div class="panel" style="grid-row: 1 / -1;">
+    <div class="panel-header">
+      <span class="panel-title">◈ Источники Данных</span>
+      <span class="panel-count" id="feedsActive">0 активно</span>
+    </div>
+
+    <div id="feedsList">
+      <div class="feed-item idle" id="feed-sentiment">
+        <div>
+          <div class="feed-name">▸ Сентимент</div>
+          <div class="feed-meta">RSS / Соцсети</div>
+        </div>
+        <div class="feed-meta">
+          <div class="feed-count" id="feed-sentiment-count">0</div>
+          <div id="feed-sentiment-time">—</div>
+        </div>
+      </div>
+
+      <div class="feed-item idle" id="feed-portwatch">
+        <div>
+          <div class="feed-name">▸ PortWatch</div>
+          <div class="feed-meta">Транзит Ормуз</div>
+        </div>
+        <div class="feed-meta">
+          <div class="feed-count" id="feed-portwatch-count">0</div>
+          <div id="feed-portwatch-time">—</div>
+        </div>
+      </div>
+
+      <div class="feed-item idle" id="feed-eia">
+        <div>
+          <div class="feed-name">▸ EIA</div>
+          <div class="feed-meta">WPSR / PSM</div>
+        </div>
+        <div class="feed-meta">
+          <div class="feed-count" id="feed-eia-count">0</div>
+          <div id="feed-eia-time">—</div>
+        </div>
+      </div>
+
+      <div class="feed-item idle" id="feed-polymarket">
+        <div>
+          <div class="feed-name">▸ Polymarket</div>
+          <div class="feed-meta">Цены рынков</div>
+        </div>
+        <div class="feed-meta">
+          <div class="feed-count" id="feed-polymarket-count">0</div>
+          <div id="feed-polymarket-time">—</div>
+        </div>
+      </div>
+
+      <div class="feed-item idle" id="feed-tradfi">
+        <div>
+          <div class="feed-name">▸ IBKR TradFi</div>
+          <div class="feed-meta">USO / BNO / Опции</div>
+        </div>
+        <div class="feed-meta">
+          <div class="feed-count" id="feed-tradfi-count">0</div>
+          <div id="feed-tradfi-time">—</div>
+        </div>
+      </div>
+
+      <div class="feed-item idle" id="feed-depeg">
+        <div>
+          <div class="feed-name">▸ Депег Монитор</div>
+          <div class="feed-meta">USDC / USDT / DAI</div>
+        </div>
+        <div class="feed-meta">
+          <div class="feed-count" id="feed-depeg-count">0</div>
+          <div id="feed-depeg-time">—</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PortWatch Visualization -->
+    <div style="margin-top: 16px;">
+      <div class="panel-header">
+        <span class="panel-title">◈ Транзит Ормуза</span>
+      </div>
+      <div class="portwatch-viz" id="portwatchViz">
+        <div style="display: flex; justify-content: space-between; font-size: 12px; color: var(--text-secondary);">
+          <span>Трафик vs 30д</span>
+          <span id="pwDropPct" style="font-family: 'JetBrains Mono'; color: var(--accent-amber);">—</span>
+        </div>
+        <div class="pw-bar-container">
+          <div class="pw-bar-fill" id="pwBar" style="width: 0%; background: linear-gradient(90deg, var(--accent-green), var(--accent-amber));">
+          </div>
+          <div class="pw-threshold"></div>
+          <div class="pw-threshold-label">80%</div>
+        </div>
+        <div style="display: flex; justify-content: space-between; margin-top: 8px; font-size: 11px; color: var(--text-dim); font-family: 'JetBrains Mono';">
+          <span>AIS: <span id="pwAIS">—</span></span>
+          <span>Свежесть: <span id="pwFresh">—</span></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sentiment Feed -->
+    <div style="margin-top: 8px;">
+      <div class="panel-header">
+        <span class="panel-title">◈ Лента Сентимента</span>
+      </div>
+      <div id="sentimentFeed">
+        <div class="empty-state">
+          <div class="empty-icon">◆</div>
+          <div>Ожидание ключевых слов...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Center: Markets & Arb Connections -->
+  <div class="panel" style="grid-row: 1 / -1;">
+    <div class="panel-header">
+      <span class="panel-title">◈ Карта Кросс-Рыночного Арбитража</span>
+    </div>
+
+    <div class="markets-grid" id="marketsGrid">
+      <!-- PM Market Cards -->
+      <div class="market-card" id="card-ceasefire">
+        <div class="market-name">
+          ◆ Перемирие США-Иран
+          <span class="market-tag tag-pm">PM</span>
+        </div>
+        <div class="price-row">
+          <span class="price-label">ДА</span>
+          <span class="price-value price-yes" id="cf-yes">$—</span>
+        </div>
+        <div class="price-row">
+          <span class="price-label">НЕТ</span>
+          <span class="price-value price-no" id="cf-no">$—</span>
+        </div>
+        <div class="price-row">
+          <span class="price-label">Об.24ч</span>
+          <span class="price-value" style="color: var(--text-dim); font-size: 12px;" id="cf-vol">—</span>
+        </div>
+      </div>
+
+      <div class="market-card" id="card-uso">
+        <div class="market-name">
+          ◆ USO (Нефть ETF)
+          <span class="market-tag tag-tradfi">IBKR</span>
+        </div>
+        <div class="price-row">
+          <span class="price-label">Цена</span>
+          <span class="price-value price-spot" id="uso-spot">$—</span>
+        </div>
+        <div class="price-row">
+          <span class="price-label">IV ATM</span>
+          <span class="price-value price-iv" id="uso-iv">—</span>
+        </div>
+        <div class="price-row">
+          <span class="price-label">Перекос</span>
+          <span class="price-value" style="color: var(--text-secondary); font-size: 12px;" id="uso-skew">—</span>
+        </div>
+      </div>
+
+      <!-- Arb Connection: Fake Ceasefire -->
+      <div class="arb-connection" id="arb-ceasefire" style="display:none;">
+        <div class="arb-header">
+          <span class="arb-strategy">◇ Фейк Перемирие (Спред)</span>
+          <span class="arb-strength" id="arb-cf-strength"></span>
+        </div>
+        <div class="arb-legs">
+          <div class="arb-leg leg-pm">
+            <div class="arb-leg-title">● Нога Polymarket</div>
+            <div class="signal-detail">КУПИТЬ НЕТ → Перемирие</div>
+            <div class="signal-detail" id="arb-cf-pm-price"></div>
+          </div>
+          <div class="arb-arrow">↔</div>
+          <div class="arb-leg leg-tradfi">
+            <div class="arb-leg-title">■ Хедж IBKR</div>
+            <div class="signal-detail">КУПИТЬ ПУТ → USO OTM</div>
+            <div class="signal-detail" id="arb-cf-tf-price"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Hormuz Markets -->
+      <div class="market-card" id="card-hormuz">
+        <div class="market-name">
+          ◆ Ормузский Пролив
+          <span class="market-tag tag-pm">PM</span>
+        </div>
+        <div class="price-row">
+          <span class="price-label">ДА</span>
+          <span class="price-value price-yes" id="hz-yes">$—</span>
+        </div>
+        <div class="price-row">
+          <span class="price-label">НЕТ</span>
+          <span class="price-value price-no" id="hz-no">$—</span>
+        </div>
+        <div class="price-row">
+          <span class="price-label">Об.24ч</span>
+          <span class="price-value" style="color: var(--text-dim); font-size: 12px;" id="hz-vol">—</span>
+        </div>
+      </div>
+
+      <div class="market-card" id="card-bno">
+        <div class="market-name">
+          ◆ BNO (Brent ETF)
+          <span class="market-tag tag-tradfi">IBKR</span>
+        </div>
+        <div class="price-row">
+          <span class="price-label">Цена</span>
+          <span class="price-value price-spot" id="bno-spot">$—</span>
+        </div>
+        <div class="price-row">
+          <span class="price-label">IV ATM</span>
+          <span class="price-value price-iv" id="bno-iv">—</span>
+        </div>
+        <div class="price-row">
+          <span class="price-label">Перекос</span>
+          <span class="price-value" style="color: var(--text-secondary); font-size: 12px;" id="bno-skew">—</span>
+        </div>
+      </div>
+
+      <!-- Arb Connection: Hormuz -->
+      <div class="arb-connection" id="arb-hormuz" style="display:none;">
+        <div class="arb-header">
+          <span class="arb-strategy">◇ Ормуз Дефиниция Арб</span>
+          <span class="arb-strength" id="arb-hz-strength"></span>
+        </div>
+        <div class="arb-legs">
+          <div class="arb-leg leg-pm">
+            <div class="arb-leg-title">● Нога Polymarket</div>
+            <div class="signal-detail">КУПИТЬ НЕТ → Закрытие Ормуза</div>
+            <div class="signal-detail" id="arb-hz-pm-price"></div>
+          </div>
+          <div class="arb-arrow">↔</div>
+          <div class="arb-leg leg-tradfi">
+            <div class="arb-leg-title">■ Хедж IBKR</div>
+            <div class="signal-detail">КУПИТЬ КОЛЛ → BNO OTM</div>
+            <div class="signal-detail" id="arb-hz-tf-price"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Parser Config Toggle -->
+    <div class="config-toggle" id="configToggle" onclick="toggleConfig()">
+      <span class="config-toggle-title">◈ Настройки парсера</span>
+      <span class="config-toggle-arrow" id="configArrow">▾</span>
+    </div>
+    <div class="config-body" id="configBody">
+      <div class="config-stats">
+        Рынков: <span id="cfgTotal">0</span> &middot;
+        С хеджем: <span id="cfgHedge">0</span> &middot;
+        Категорий: <span id="cfgCatCount">0</span>
+      </div>
+      <div class="cat-grid" id="catGrid"></div>
+      <div class="config-section-title">Фильтры</div>
+      <div id="cfgThresholds"></div>
+      <div class="config-section-title">Скоринг арбитража</div>
+      <div class="scoring-row" id="cfgScoring"></div>
+    </div>
+
+    <!-- Position Calculator -->
+    <div class="calc-panel" id="calcPanel">
+      <div class="calc-title">◈ Калькулятор позиции</div>
+      <div class="calc-inactive" id="calcInactive">Нажми на сигнал для расчёта</div>
+      <div id="calcBody" style="display:none;">
+        <div id="calcSignalName" style="font-size: 12px; color: var(--accent-cyan); margin-bottom: 8px;"></div>
+        <div class="calc-input-row">
+          <span style="font-size: 11px; color: var(--text-dim);">Размер:</span>
+          <input type="range" class="calc-slider" id="calcSlider" min="100" max="10000" step="100" value="1000">
+          <span class="calc-amount" id="calcAmount">$1,000</span>
+        </div>
+        <div class="calc-grid">
+          <span class="calc-label">Контрактов:</span><span class="calc-val calc-neutral" id="calcContracts">0</span>
+          <span class="calc-label">Профит (если прав):</span><span class="calc-val calc-profit" id="calcProfit">$0</span>
+          <span class="calc-label">Убыток (если нет):</span><span class="calc-val calc-loss" id="calcLoss">$0</span>
+          <span class="calc-label">Безубыточная вер-ть:</span><span class="calc-val calc-neutral" id="calcBreakeven">0%</span>
+          <span class="calc-label">EV (при оценке):</span><span class="calc-val" id="calcEV">$0</span>
+        </div>
+        <div class="calc-hint" id="calcHint"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right: Signals -->
+  <div class="panel" style="grid-row: 1 / -1;">
+    <!-- Signal Settings Toggle -->
+    <div class="settings-toggle" onclick="toggleSettings()">
+      <span style="font-size: 12px; font-weight: 600; color: var(--text-primary);">◈ Настройки сигналов</span>
+      <span id="settingsArrow" style="color: var(--text-dim); transition: transform 0.3s;">▾</span>
+    </div>
+    <div class="settings-body" id="settingsBody">
+      <!-- Strategy Toggles -->
+      <div class="settings-section">
+        <div class="settings-section-title">Стратегии</div>
+        <div class="strat-toggle-row">
+          <label class="toggle-switch"><input type="checkbox" id="stg-ceasefire" checked><span class="toggle-slider"></span></label>
+          <label for="stg-ceasefire">Fake Ceasefire</label>
+        </div>
+        <div class="strat-toggle-row">
+          <label class="toggle-switch"><input type="checkbox" id="stg-hormuz" checked><span class="toggle-slider"></span></label>
+          <label for="stg-hormuz">Hormuz Definition</label>
+        </div>
+        <div class="strat-toggle-row">
+          <label class="toggle-switch"><input type="checkbox" id="stg-latency" checked><span class="toggle-slider"></span></label>
+          <label for="stg-latency">Latency Arb</label>
+        </div>
+      </div>
+      <!-- Ceasefire Params -->
+      <div class="settings-section">
+        <div class="settings-section-title">Ceasefire</div>
+        <div class="param-row"><span class="param-label">Порог YES:</span><input class="param-input" id="cfg-cf-yes" type="number" step="0.01" min="0" max="1"><span class="param-unit"></span></div>
+        <div class="param-row"><span class="param-label">Кулдаун:</span><input class="param-input" id="cfg-cf-cd" type="number" step="60" min="0"><span class="param-unit">с</span></div>
+        <div class="param-row"><span class="param-label">Хедж:</span><input class="param-input" id="cfg-cf-hedge" type="text" style="width:50px;"><span class="param-unit"></span></div>
+        <div class="param-row"><span class="param-label">Страйк OTM:</span><input class="param-input" id="cfg-cf-otm" type="number" step="0.01" min="0" max="1"><span class="param-unit">%</span></div>
+      </div>
+      <!-- Hormuz Params -->
+      <div class="settings-section">
+        <div class="settings-section-title">Hormuz</div>
+        <div class="param-row"><span class="param-label">Порог YES:</span><input class="param-input" id="cfg-hz-yes" type="number" step="0.01" min="0" max="1"><span class="param-unit"></span></div>
+        <div class="param-row"><span class="param-label">PortWatch %:</span><input class="param-input" id="cfg-hz-pw" type="number" step="1" min="0" max="100"><span class="param-unit">%</span></div>
+        <div class="param-row"><span class="param-label">AIS stale:</span><input class="param-input" id="cfg-hz-ais" type="number" step="1" min="1"><span class="param-unit">д</span></div>
+        <div class="param-row"><span class="param-label">Кулдаун:</span><input class="param-input" id="cfg-hz-cd" type="number" step="60" min="0"><span class="param-unit">с</span></div>
+        <div class="param-row"><span class="param-label">Хедж:</span><input class="param-input" id="cfg-hz-hedge" type="text" style="width:50px;"><span class="param-unit"></span></div>
+      </div>
+      <!-- Latency Params -->
+      <div class="settings-section">
+        <div class="settings-section-title">Latency</div>
+        <div class="param-row"><span class="param-label">PSM лаг:</span><input class="param-input" id="cfg-lt-psm" type="number" step="1" min="1"><span class="param-unit">мес</span></div>
+        <div class="param-row"><span class="param-label">Кулдаун:</span><input class="param-input" id="cfg-lt-cd" type="number" step="60" min="0"><span class="param-unit">с</span></div>
+        <div class="param-row"><span class="param-label">PW мин YES:</span><input class="param-input" id="cfg-lt-pwyes" type="number" step="0.01" min="0" max="1"><span class="param-unit"></span></div>
+        <div class="param-row"><span class="param-label">PSM мин YES:</span><input class="param-input" id="cfg-lt-psmyes" type="number" step="0.01" min="0" max="1"><span class="param-unit"></span></div>
+      </div>
+      <!-- Filters -->
+      <div class="settings-section">
+        <div class="settings-section-title">Фильтры</div>
+        <div class="param-row"><span class="param-label">Мин. грань:</span><input class="param-input" id="cfg-f-edge" type="number" step="0.5" min="0"><span class="param-unit">%</span></div>
+        <div class="param-row"><span class="param-label">Мин. сила:</span><input class="param-input" id="cfg-f-str" type="number" step="0.05" min="0" max="1"><span class="param-unit"></span></div>
+        <div class="param-row"><span class="param-label">Мин. уверен.:</span><input class="param-input" id="cfg-f-conf" type="number" step="0.05" min="0" max="1"><span class="param-unit"></span></div>
+      </div>
+      <button class="settings-save" id="settingsSaveBtn" onclick="saveSettings()">СОХРАНИТЬ</button>
+    </div>
+    <div class="panel-header">
+      <span class="panel-title">◈ СИГНАЛЫ</span>
+      <span class="panel-count" id="signalCount">0</span>
+    </div>
+    <div id="signalsList">
+      <div class="empty-state">
+        <div class="empty-icon">◆</div>
+        <div>Сигналов пока нет</div>
+        <div style="font-size: 11px; margin-top: 4px; color: var(--text-dim);">
+          Сигналы появятся при обнаружении арбитражных возможностей
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ═══════════════════════════════════════
+// PMarb Dashboard Client
+// ═══════════════════════════════════════
+
+let ws = null;
+let totalEvents = 0;
+let bootTime = Date.now();
+
+// ─── Clock ───
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent = 
+    now.toLocaleTimeString('en-US', { hour12: false });
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ─── Uptime ───
+function updateUptime() {
+  const sec = Math.floor((Date.now() - bootTime) / 1000);
+  const h = String(Math.floor(sec / 3600)).padStart(2, '0');
+  const m = String(Math.floor((sec % 3600) / 60)).padStart(2, '0');
+  const s = String(sec % 60).padStart(2, '0');
+  document.getElementById('uptime').textContent = `${h}:${m}:${s}`;
+}
+setInterval(updateUptime, 1000);
+
+// ─── WebSocket ───
+function connectWS() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}/ws`);
+
+  ws.onopen = () => {
+    document.getElementById('wsDot').classList.add('connected');
+    document.getElementById('wsLabel').textContent = 'connected';
+  };
+
+  ws.onclose = () => {
+    document.getElementById('wsDot').classList.remove('connected');
+    document.getElementById('wsLabel').textContent = 'reconnecting...';
+    setTimeout(connectWS, 3000);
+  };
+
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    handleMessage(msg);
+  };
+}
+
+function handleMessage(msg) {
+  totalEvents++;
+  document.getElementById('totalEvents').textContent = totalEvents;
+
+  switch (msg.type) {
+    case 'init':
+      handleInit(msg.data);
+      break;
+    case 'pm_price':
+      updatePMPrice(msg.data);
+      break;
+    case 'tradfi':
+      updateTradFi(msg.data);
+      break;
+    case 'portwatch':
+      updatePortWatch(msg.data);
+      break;
+    case 'sentiment':
+      addSentiment(msg.data);
+      break;
+    case 'signal':
+      addSignal(msg.data);
+      break;
+    case 'depeg_alert':
+      document.getElementById('usdcStatus').textContent = `▲ ${msg.data.token} ${msg.data.bps}bps`;
+      document.getElementById('usdcStatus').className = 'risk-warn';
+      break;
+    case 'risk_breach':
+      document.getElementById('riskStatus').innerHTML = `<span>▲</span><span class="risk-halt">HALTED: ${msg.data.detail}</span>`;
+      break;
+  }
+
+  updateFeedStatus();
+}
+
+function handleInit(data) {
+  if (data.uptime_sec) bootTime = Date.now() - data.uptime_sec * 1000;
+
+  // Collectors
+  for (const [name, info] of Object.entries(data.collectors || {})) {
+    updateFeed(name, info);
+  }
+
+  // PM prices
+  for (const [slug, pm] of Object.entries(data.pm_prices || {})) {
+    updatePMPrice(pm);
+  }
+
+  // TradFi
+  for (const [sym, tf] of Object.entries(data.tradfi || {})) {
+    updateTradFi(tf);
+  }
+
+  // PortWatch
+  if (data.portwatch) updatePortWatch(data.portwatch);
+
+  // Signals
+  for (const sig of (data.signals || [])) {
+    addSignal(sig, false);
+  }
+
+  // Sentiment
+  for (const s of (data.sentiment || [])) {
+    addSentiment(s, false);
+  }
+}
+
+// ─── Feed Status ───
+function updateFeed(name, info) {
+  const el = document.getElementById(`feed-${name}`);
+  if (!el) return;
+
+  const countEl = document.getElementById(`feed-${name}-count`);
+  const timeEl = document.getElementById(`feed-${name}-time`);
+
+  if (countEl) countEl.textContent = info.events || 0;
+  if (timeEl && info.last_poll) {
+    const d = new Date(info.last_poll);
+    timeEl.textContent = d.toLocaleTimeString('en-US', { hour12: false });
+  }
+
+  el.className = 'feed-item ' + (info.status === 'active' ? 'active' : info.status === 'error' ? 'error' : 'idle');
+}
+
+function updateFeedStatus() {
+  const feeds = document.querySelectorAll('.feed-item.active');
+  document.getElementById('feedsActive').textContent = `${feeds.length} активно`;
+}
+
+// ─── PM Prices ───
+function updatePMPrice(data) {
+  const slug = data.slug || '';
+  let prefix = '';
+  if (slug.includes('ceasefire') || slug.includes('peace')) prefix = 'cf';
+  else if (slug.includes('hormuz') || slug.includes('strait')) prefix = 'hz';
+  else prefix = 'cf'; // fallback
+
+  const yesEl = document.getElementById(`${prefix}-yes`);
+  const noEl = document.getElementById(`${prefix}-no`);
+  const volEl = document.getElementById(`${prefix}-vol`);
+
+  if (yesEl) yesEl.textContent = `$${(data.yes || 0).toFixed(3)}`;
+  if (noEl) noEl.textContent = `$${(data.no || 0).toFixed(3)}`;
+  if (volEl) volEl.textContent = `$${((data.vol24h || 0) / 1000).toFixed(0)}K`;
+
+  // Update collector status
+  const feedEl = document.getElementById('feed-polymarket');
+  if (feedEl) feedEl.className = 'feed-item active';
+  const cnt = document.getElementById('feed-polymarket-count');
+  if (cnt) cnt.textContent = parseInt(cnt.textContent || 0) + 1;
+}
+
+// ─── TradFi ───
+function updateTradFi(data) {
+  const sym = (data.symbol || '').toUpperCase();
+  let prefix = '';
+  if (sym.includes('USO')) prefix = 'uso';
+  else if (sym.includes('BNO')) prefix = 'bno';
+  else return;
+
+  const spotEl = document.getElementById(`${prefix}-spot`);
+  const ivEl = document.getElementById(`${prefix}-iv`);
+  const skewEl = document.getElementById(`${prefix}-skew`);
+
+  if (spotEl) spotEl.textContent = `$${(data.spot || 0).toFixed(2)}`;
+  if (ivEl) ivEl.textContent = `${((data.iv_atm || 0) * 100).toFixed(1)}%`;
+  if (skewEl && data.iv_put_25d > 0 && data.iv_call_25d > 0) {
+    const putIV = (data.iv_put_25d * 100).toFixed(0);
+    const callIV = (data.iv_call_25d * 100).toFixed(0);
+    const diff = ((data.iv_put_25d - data.iv_call_25d) * 100).toFixed(1);
+    const color = diff > 0 ? 'var(--accent-red)' : 'var(--accent-green)';
+    skewEl.innerHTML = `<span style="color:${color}">${diff > 0 ? '+' : ''}${diff}pp</span> <span style="color:var(--text-dim);font-size:10px">P${putIV}/C${callIV}</span>`;
+  }
+
+  const feedEl = document.getElementById('feed-tradfi');
+  if (feedEl) feedEl.className = 'feed-item active';
+}
+
+// ─── PortWatch ───
+function updatePortWatch(data) {
+  const drop = data.pct_drop || 0;
+  const bar = document.getElementById('pwBar');
+  const pct = document.getElementById('pwDropPct');
+  const ais = document.getElementById('pwAIS');
+  const fresh = document.getElementById('pwFresh');
+
+  if (bar) {
+    bar.style.width = `${Math.min(100, drop)}%`;
+    bar.textContent = `${drop.toFixed(1)}%`;
+    if (drop >= 80) {
+      bar.style.background = 'linear-gradient(90deg, var(--accent-red), #dc2626)';
+    } else if (drop >= 60) {
+      bar.style.background = 'linear-gradient(90deg, var(--accent-amber), var(--accent-red))';
+    } else {
+      bar.style.background = 'linear-gradient(90deg, var(--accent-green), var(--accent-amber))';
+    }
+  }
+  if (pct) pct.textContent = `${drop.toFixed(1)}%`;
+  if (ais) {
+    ais.textContent = data.ais_quality || '—';
+    ais.style.color = data.ais_quality === 'normal' ? 'var(--accent-green)' : 
+                       data.ais_quality === 'degraded' ? 'var(--accent-amber)' : 'var(--accent-red)';
+  }
+  if (fresh) fresh.textContent = `${data.freshness_days || 0}d`;
+
+  const feedEl = document.getElementById('feed-portwatch');
+  if (feedEl) feedEl.className = 'feed-item active';
+}
+
+// ─── Signals ───
+function addSignal(data, animate = true) {
+  const list = document.getElementById('signalsList');
+  // Clear empty state
+  if (list.querySelector('.empty-state')) list.innerHTML = '';
+
+  const stratIcons = {
+    'fake_ceasefire': '◇',
+    'hormuz_definition_arb': '◇',
+    'latency_arb': '◇',
+  };
+
+  const el = document.createElement('div');
+  el.className = 'signal-item';
+  if (!animate) el.style.animation = 'none';
+
+  const icon = stratIcons[data.strategy] || '◆';
+  const str = (data.strength || 0) * 100;
+  const conf = (data.confidence || 0) * 100;
+
+  const edge = (data.edge_pct || 0);
+  const depth = (data.available_depth_usd || 0);
+  const maxProfit = (data.max_profit_usd || 0);
+  const ev = (data.ev_usd || 0);
+  const fmtUsd = (v) => v >= 1000 ? `$${(v/1000).toFixed(1)}K` : `$${v.toFixed(0)}`;
+
+  const maxLoss = (data.max_loss_usd || 0);
+  const rr = (data.risk_reward || 0);
+  const pmUrl = `https://polymarket.com/event/${data.pm_slug || ''}`;
+  const hedgeUrl = data.hedge_symbol ? `https://finance.yahoo.com/quote/${data.hedge_symbol}` : '#';
+
+  el.innerHTML = `
+    <div class="signal-strategy"><a href="${pmUrl}" target="_blank" class="signal-link">${icon} ${data.strategy}</a></div>
+    <div class="signal-detail">${data.pm_side} @ $${(data.pm_price || 0).toFixed(3)} → ${data.hedge_type} <a href="${hedgeUrl}" target="_blank" class="hedge-link">${data.hedge_symbol}</a></div>
+    <div class="signal-sizing">
+      <span class="sizing-label">Грань:</span><span class="sizing-value sizing-edge">${edge.toFixed(1)}%</span>
+      <span class="sizing-label">Глубина:</span><span class="sizing-value sizing-depth">${fmtUsd(depth)}</span>
+      <span class="sizing-label">Макс.Профит:</span><span class="sizing-value sizing-profit">${fmtUsd(maxProfit)}</span>
+      <span class="sizing-label">Макс.Убыток:</span><span class="sizing-value sizing-loss">${fmtUsd(maxLoss)}</span>
+      <span class="sizing-label">EV:</span><span class="sizing-value sizing-ev">${fmtUsd(ev)}</span>
+      <span class="sizing-label">Риск/Доход:</span><span class="sizing-value ${rr >= 1 ? 'sizing-rr-good' : 'sizing-rr-bad'}">${rr.toFixed(2)}x</span>
+    </div>
+    <div class="signal-reasoning">${data.reasoning || ''}</div>
+    <div class="signal-bar">
+      <div class="bar-strength" style="width: ${str}%" title="Сила ${str.toFixed(0)}%"></div>
+      <div class="bar-confidence" style="width: ${conf}%" title="Уверенность ${conf.toFixed(0)}%"></div>
+    </div>
+  `;
+
+  // Click to load into calculator
+  el.style.cursor = 'pointer';
+  el.addEventListener('click', (e) => {
+    if (e.target.tagName === 'A') return; // Don't intercept link clicks
+    loadCalculator(data);
+  });
+
+  list.prepend(el);
+  // Keep max 30
+  while (list.children.length > 30) list.removeChild(list.lastChild);
+
+  document.getElementById('signalCount').textContent = list.children.length;
+
+  // Show arb connection
+  if (data.strategy === 'fake_ceasefire') {
+    const arb = document.getElementById('arb-ceasefire');
+    if (arb) {
+      arb.style.display = 'block';
+      document.getElementById('arb-cf-strength').innerHTML = 
+        `<span style="color: var(--accent-green)">str: ${str.toFixed(0)}%</span> / <span style="color: var(--accent-amber)">conf: ${conf.toFixed(0)}%</span> | <span style="color: var(--accent-cyan)">edge: ${edge.toFixed(1)}%</span> | <span style="color: var(--accent-green)">EV: ${fmtUsd(ev)}</span>`;
+      document.getElementById('arb-cf-pm-price').textContent = `Entry: $${(data.pm_price || 0).toFixed(3)} | Depth: ${fmtUsd(depth)}`;
+    }
+  }
+  if (data.strategy === 'hormuz_definition_arb') {
+    const arb = document.getElementById('arb-hormuz');
+    if (arb) {
+      arb.style.display = 'block';
+      document.getElementById('arb-hz-strength').innerHTML = 
+        `<span style="color: var(--accent-green)">str: ${str.toFixed(0)}%</span> / <span style="color: var(--accent-amber)">conf: ${conf.toFixed(0)}%</span>`;
+      document.getElementById('arb-hz-pm-price').textContent = `Entry: $${(data.pm_price || 0).toFixed(3)}`;
+    }
+  }
+}
+
+// ─── Sentiment ───
+function addSentiment(data, animate = true) {
+  const feed = document.getElementById('sentimentFeed');
+  if (feed.querySelector('.empty-state')) feed.innerHTML = '';
+
+  const el = document.createElement('div');
+  el.className = 'sentiment-item';
+  if (animate) el.style.animation = 'slideIn 0.3s ease';
+
+  let kws = '';
+  for (const k of (data.keywords || [])) {
+    const cls = k === 'ceasefire' ? 'kw-ceasefire' : k === 'escalation' ? 'kw-escalation' : '';
+    kws += `<span class="kw-tag ${cls}">${k}</span>`;
+  }
+
+  el.innerHTML = `
+    <div style="color: var(--text-secondary);">${data.text || ''}</div>
+    <div class="sentiment-keywords">${kws}</div>
+  `;
+  feed.prepend(el);
+  while (feed.children.length > 20) feed.removeChild(feed.lastChild);
+}
+
+// ─── Polling fallback (if WS unavailable) ───
+async function pollState() {
+  try {
+    const resp = await fetch('/api/state');
+    const data = await resp.json();
+    handleInit(data);
+  } catch (e) {
+    console.log('Poll failed:', e);
+  }
+}
+
+// ─── Signal Settings Panel ───
+function toggleSettings() {
+  const body = document.getElementById('settingsBody');
+  const arrow = document.getElementById('settingsArrow');
+  const isOpen = body.classList.toggle('open');
+  arrow.style.transform = isOpen ? 'rotate(180deg)' : '';
+  if (isOpen && !body.dataset.loaded) loadSettings();
+}
+
+async function loadSettings() {
+  try {
+    const resp = await fetch('/api/signal-settings');
+    const cfg = await resp.json();
+    document.getElementById('settingsBody').dataset.loaded = '1';
+
+    // Strategy toggles
+    const s = cfg.strategies || {};
+    document.getElementById('stg-ceasefire').checked = s.fake_ceasefire?.enabled !== false;
+    document.getElementById('stg-hormuz').checked = s.hormuz_definition_arb?.enabled !== false;
+    document.getElementById('stg-latency').checked = s.latency_arb?.enabled !== false;
+
+    // Ceasefire params
+    const cf = cfg.ceasefire || {};
+    document.getElementById('cfg-cf-yes').value = cf.pm_yes_threshold ?? 0.15;
+    document.getElementById('cfg-cf-cd').value = cf.signal_cooldown_sec ?? 300;
+    document.getElementById('cfg-cf-hedge').value = cf.hedge_symbol ?? 'USO';
+    document.getElementById('cfg-cf-otm').value = cf.hedge_strike_offset_pct ?? 0.10;
+
+    // Hormuz params
+    const hz = cfg.hormuz || {};
+    document.getElementById('cfg-hz-yes').value = hz.pm_yes_threshold ?? 0.30;
+    document.getElementById('cfg-hz-pw').value = hz.portwatch_threshold_pct ?? 80;
+    document.getElementById('cfg-hz-ais').value = hz.ais_stale_days ?? 7;
+    document.getElementById('cfg-hz-cd').value = hz.signal_cooldown_sec ?? 600;
+    document.getElementById('cfg-hz-hedge').value = hz.hedge_symbol ?? 'BNO';
+
+    // Latency params
+    const lt = cfg.latency || {};
+    document.getElementById('cfg-lt-psm').value = lt.psm_lag_months ?? 2;
+    document.getElementById('cfg-lt-cd').value = lt.signal_cooldown_sec ?? 3600;
+    document.getElementById('cfg-lt-pwyes').value = lt.portwatch_min_yes ?? 0.20;
+    document.getElementById('cfg-lt-psmyes').value = lt.psm_min_yes ?? 0.15;
+
+    // Filters
+    const f = cfg.filters || {};
+    document.getElementById('cfg-f-edge').value = f.min_edge_pct ?? 5.0;
+    document.getElementById('cfg-f-str').value = f.min_strength ?? 0.3;
+    document.getElementById('cfg-f-conf').value = f.min_confidence ?? 0.5;
+  } catch (e) {
+    console.error('Failed to load settings:', e);
+  }
+}
+
+async function saveSettings() {
+  const btn = document.getElementById('settingsSaveBtn');
+  btn.textContent = 'СОХРАНЯЮ...';
+  btn.className = 'settings-save saving';
+
+  const payload = {
+    strategies: {
+      fake_ceasefire: { enabled: document.getElementById('stg-ceasefire').checked },
+      hormuz_definition_arb: { enabled: document.getElementById('stg-hormuz').checked },
+      latency_arb: { enabled: document.getElementById('stg-latency').checked },
+    },
+    ceasefire: {
+      pm_yes_threshold: parseFloat(document.getElementById('cfg-cf-yes').value),
+      signal_cooldown_sec: parseInt(document.getElementById('cfg-cf-cd').value),
+      hedge_symbol: document.getElementById('cfg-cf-hedge').value.trim(),
+      hedge_strike_offset_pct: parseFloat(document.getElementById('cfg-cf-otm').value),
+    },
+    hormuz: {
+      pm_yes_threshold: parseFloat(document.getElementById('cfg-hz-yes').value),
+      portwatch_threshold_pct: parseFloat(document.getElementById('cfg-hz-pw').value),
+      ais_stale_days: parseInt(document.getElementById('cfg-hz-ais').value),
+      signal_cooldown_sec: parseInt(document.getElementById('cfg-hz-cd').value),
+      hedge_symbol: document.getElementById('cfg-hz-hedge').value.trim(),
+    },
+    latency: {
+      psm_lag_months: parseInt(document.getElementById('cfg-lt-psm').value),
+      signal_cooldown_sec: parseInt(document.getElementById('cfg-lt-cd').value),
+      portwatch_min_yes: parseFloat(document.getElementById('cfg-lt-pwyes').value),
+      psm_min_yes: parseFloat(document.getElementById('cfg-lt-psmyes').value),
+    },
+    filters: {
+      min_edge_pct: parseFloat(document.getElementById('cfg-f-edge').value),
+      min_strength: parseFloat(document.getElementById('cfg-f-str').value),
+      min_confidence: parseFloat(document.getElementById('cfg-f-conf').value),
+    },
+  };
+
+  try {
+    await fetch('/api/signal-settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    btn.textContent = 'СОХРАНЕНО';
+    btn.className = 'settings-save saved';
+    setTimeout(() => {
+      btn.textContent = 'СОХРАНИТЬ';
+      btn.className = 'settings-save';
+    }, 2000);
+  } catch (e) {
+    btn.textContent = 'ОШИБКА';
+    btn.className = 'settings-save';
+    console.error('Failed to save settings:', e);
+  }
+}
+
+// ─── Parser Config Panel ───
+function toggleConfig() {
+  const body = document.getElementById('configBody');
+  const arrow = document.getElementById('configArrow');
+  const isOpen = body.classList.toggle('open');
+  arrow.classList.toggle('open', isOpen);
+  if (isOpen && !body.dataset.loaded) loadConfig();
+}
+
+async function loadConfig() {
+  try {
+    const resp = await fetch('/api/config');
+    const cfg = await resp.json();
+    document.getElementById('configBody').dataset.loaded = '1';
+
+    // Stats
+    document.getElementById('cfgTotal').textContent = cfg.total_markets || 0;
+    document.getElementById('cfgHedge').textContent = cfg.total_hedgeable || 0;
+    document.getElementById('cfgCatCount').textContent = (cfg.categories || []).length;
+
+    // Category cards
+    const grid = document.getElementById('catGrid');
+    grid.innerHTML = '';
+    for (const cat of (cfg.categories || [])) {
+      const card = document.createElement('div');
+      card.className = 'cat-card';
+      const kwHtml = cat.keywords.map(k => `<span class="kw-tag">${k}</span>`).join('');
+      const hedgeHtml = cat.hedges.map(h => `<span class="hedge-chip">${h}</span>`).join('');
+      const badgeClass = cat.matches > 0 ? '' : ' zero';
+      card.innerHTML = `
+        <div class="cat-header">
+          <span class="cat-name">${cat.icon} ${cat.name}</span>
+          <span class="cat-badge${badgeClass}">${cat.matches}</span>
+        </div>
+        <div class="cat-keywords">${kwHtml}</div>
+        <div class="cat-hedges">${hedgeHtml}</div>
+      `;
+      grid.appendChild(card);
+    }
+
+    // Thresholds
+    const thr = cfg.thresholds || {};
+    const thrEl = document.getElementById('cfgThresholds');
+    const fmtK = v => v >= 1000 ? `$${(v/1000).toFixed(0)}K` : `$${v}`;
+    thrEl.innerHTML = `
+      <div class="threshold-row"><span class="threshold-label">Мин.Объём 24ч:</span><span class="threshold-val">${fmtK(thr.min_volume_24h || 0)}</span></div>
+      <div class="threshold-row"><span class="threshold-label">Мин.Ликвидность:</span><span class="threshold-val">${fmtK(thr.min_liquidity || 0)}</span></div>
+      <div class="threshold-row"><span class="threshold-label">YES диапазон:</span><span class="threshold-val">${thr.min_yes_price} — ${thr.max_yes_price}</span></div>
+      <div class="threshold-row"><span class="threshold-label">Макс.рынков:</span><span class="threshold-val">${(thr.max_pages || 0) * (thr.markets_per_page || 0)}</span></div>
+    `;
+
+    // Scoring
+    const sc = cfg.scoring || {};
+    const scEl = document.getElementById('cfgScoring');
+    scEl.innerHTML = `
+      <span class="scoring-item">Объём: <span>${sc.volume_weight || 0}</span></span>
+      <span class="scoring-item">Цена: <span>${sc.price_weight || 0}</span></span>
+      <span class="scoring-item">Ликв: <span>${sc.liquidity_weight || 0}</span></span>
+      <span class="scoring-item">Хедж: <span>${sc.hedge_weight || 0}</span></span>
+      <span class="scoring-item">Спред: <span>-${sc.spread_penalty || 0}/пп</span></span>
+    `;
+  } catch (e) {
+    console.error('Failed to load config:', e);
+  }
+}
+
+// ─── Position Calculator ───
+let calcData = null;
+
+function loadCalculator(data) {
+  calcData = data;
+  document.getElementById('calcInactive').style.display = 'none';
+  document.getElementById('calcBody').style.display = 'block';
+  const pmUrl = `https://polymarket.com/event/${data.pm_slug || ''}`;
+  document.getElementById('calcSignalName').innerHTML =
+    `<a href="${pmUrl}" target="_blank" class="signal-link">${data.strategy}</a> — ${data.pm_side} @ $${(data.pm_price || 0).toFixed(3)}`;
+  document.getElementById('calcSlider').value = 1000;
+  recalcCalc();
+}
+
+function recalcCalc() {
+  if (!calcData) return;
+  const size = parseInt(document.getElementById('calcSlider').value);
+  const noPrice = calcData.pm_price || 0.5;
+
+  // Number of NO contracts you can buy
+  const contracts = Math.floor(size / noPrice);
+  // If NO wins (you're right): each contract pays $1
+  const profit = contracts * (1.0 - noPrice);
+  // If YES wins (you're wrong): each contract pays $0
+  const loss = size; // Full investment lost
+  // Breakeven probability: you need P(NO) > noPrice for +EV
+  const breakeven = noPrice * 100;
+  // Confidence from signal
+  const conf = calcData.confidence || 0.5;
+  const estProbRight = Math.max(conf, 1 - noPrice + (calcData.edge_pct || 0) / 100);
+  // EV = P(right) × profit - P(wrong) × loss
+  const ev = estProbRight * profit - (1 - estProbRight) * loss;
+
+  const fmtUsd = (v) => v >= 1000 ? `$${(v/1000).toFixed(1)}K` : `$${v.toFixed(0)}`;
+
+  document.getElementById('calcAmount').textContent = `$${size.toLocaleString()}`;
+  document.getElementById('calcContracts').textContent = contracts.toLocaleString();
+  document.getElementById('calcProfit').textContent = `+${fmtUsd(profit)}`;
+  document.getElementById('calcLoss').textContent = `-${fmtUsd(loss)}`;
+  document.getElementById('calcBreakeven').textContent = `${breakeven.toFixed(1)}%`;
+
+  const evEl = document.getElementById('calcEV');
+  evEl.textContent = `${ev >= 0 ? '+' : ''}${fmtUsd(Math.abs(ev))}`;
+  evEl.className = `calc-val ${ev >= 0 ? 'calc-ev-pos' : 'calc-ev-neg'}`;
+  if (ev < 0) evEl.textContent = `-${fmtUsd(Math.abs(ev))}`;
+
+  document.getElementById('calcHint').textContent =
+    `Безубыток: вер-ть НЕТ > ${breakeven.toFixed(0)}% | Оценка системы: ${(estProbRight * 100).toFixed(0)}%`;
+}
+
+// Slider event
+document.getElementById('calcSlider').addEventListener('input', recalcCalc);
+
+// ─── Init ───
+connectWS();
+setInterval(() => {
+  if (!ws || ws.readyState !== WebSocket.OPEN) pollState();
+}, 10000);
+</script>
+</body>
+</html>

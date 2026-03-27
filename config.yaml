@@ -1,0 +1,113 @@
+# ══════════════════════════════════════
+# PMarb Configuration — LIVE DATA
+# ══════════════════════════════════════
+
+polymarket:
+  # Real Polymarket slugs (verified via Gamma API 2026-03-26)
+  markets:
+    ceasefire:
+      slug: "us-x-iran-ceasefire-by-march-31"
+      condition_id: "0x3c6bcb7da14ea576e5af25547dbd96f2bb24ac34e748e76aecff2ee9195dd1ac"
+      description: "US x Iran ceasefire by March 31"
+      resolution_source: "consensus_of_reporting"
+      bilateral_required: true
+    iran_forces_march:
+      slug: "us-forces-enter-iran-by-march-31-222-191-243-517-878-439-519"
+      condition_id: "0x306d10d4a4d51b41910dbc779ca00908bd917c131541c5c42bbbc736258d2d56"
+      description: "US forces enter Iran by March 31"
+      resolution_source: "consensus_of_reporting"
+    iran_forces_april:
+      slug: "us-forces-enter-iran-by-april-30-899"
+      condition_id: "0x6d0e09d0f04572d9b1adad84703458b0297bc5603b69dccbde93147ee4443246"
+      description: "US forces enter Iran by April 30"
+      resolution_source: "consensus_of_reporting"
+    iran_regime:
+      slug: "will-the-iranian-regime-fall-by-march-31"
+      condition_id: "0x61ce3773237a948584e422de72265f937034af418a8b703e3a860ea62e59ff36"
+      description: "Will the Iranian regime fall by March 31"
+      resolution_source: "consensus_of_reporting"
+    israel_lebanon:
+      slug: "will-israel-take-military-action-in-lebanon-on-march-20-2026"
+      condition_id: "0x77508b9cb5962ff587890f79e3e39a1789384405b6ff530afbccb9d70743352a"
+      description: "Israel military action against Lebanon"
+      resolution_source: "consensus_of_reporting"
+
+  poll_interval_sec: 5
+
+tradfi:
+  instruments:
+    - symbol: USO
+      exchange: ARCA
+      type: stock
+      use_for: put_hedge
+    - symbol: BNO
+      exchange: ARCA
+      type: stock
+      use_for: call_hedge
+    - symbol: CL
+      exchange: NYMEX
+      type: future
+      description: WTI Crude
+    - symbol: BZ
+      exchange: NYMEX
+      type: future
+      description: Brent Crude
+
+  options:
+    target_delta: 0.25        # OTM target for hedge
+    min_dte: 14               # minimum days to expiry
+    max_dte: 90               # maximum days to expiry
+    max_bid_ask_spread: 0.20  # max acceptable spread in USD
+
+portwatch:
+  # IMF PortWatch ArcGIS endpoint
+  base_url: "https://portwatch.imf.org"
+  chokepoint: "Strait of Hormuz"
+  poll_interval_sec: 21600  # 6 hours
+  update_day: "Tuesday"
+  update_time_et: "09:00"
+
+eia:
+  base_url: "https://api.eia.gov/v2"
+  series:
+    weekly_stocks: "petroleum/sum/sndw"
+    monthly_supply: "petroleum/sup/sum"
+  poll_interval_sec: 3600  # 1 hour
+
+sentiment:
+  keywords:
+    ceasefire: ["ceasefire", "peace deal", "truce", "negotiations", "postpone strikes", "de-escalation"]
+    escalation: ["strike", "attack", "blockade", "retaliation", "nuclear", "bombing", "invasion"]
+    iran_confirm: ["IRNA", "PressTV", "Tehran confirms", "Iran agrees", "Khamenei"]
+    oil_disruption: ["oil supply", "tanker disruption", "hormuz", "strait closure", "shipping halt"]
+  sources:
+    - name: "google_news_iran"
+      type: "rss"
+      url: "https://news.google.com/rss/search?q=iran+ceasefire+OR+iran+strike+OR+hormuz+blockade&hl=en-US&gl=US&ceid=US:en"
+    - name: "google_news_oil"
+      type: "rss"
+      url: "https://news.google.com/rss/search?q=oil+supply+disruption+OR+hormuz+OR+tanker+attack&hl=en-US&gl=US&ceid=US:en"
+    - name: "reuters_mideast"
+      type: "rss"
+      url: "https://news.google.com/rss/search?q=site:reuters.com+iran+OR+hormuz+OR+oil+sanctions&hl=en-US&gl=US&ceid=US:en"
+
+analytics:
+  ceasefire:
+    pm_yes_threshold: 0.15     # trigger when YES > 15%
+    signal_cooldown_sec: 300   # 5 min between signals
+  hormuz:
+    pm_yes_threshold: 0.30     # trigger when YES > 30%
+    ais_stale_days: 7          # data older than 7 days = unreliable
+  latency:
+    portwatch_update_day: "Tuesday"
+    eia_wpsr_update_day: "Wednesday"
+    eia_psm_lag_months: 2
+
+risk:
+  max_session_loss_usd: 500
+  max_single_position_usd: 1000
+  max_locked_capital_usd: 5000
+  max_positions: 10
+  capital_lockup_buffer_days: 7   # UMA dispute buffer
+  depeg_alert_threshold_bps: 50   # 0.5% USDC deviation
+  curve_3pool_check_interval: 300 # 5 min

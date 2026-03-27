@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pmarb"
+version = "0.1.0"
+description = "Cross-Market Prediction Arbitrage System (Polymarket <> TradFi)"
+requires-python = ">=3.11"
+dependencies = [
+    "aiohttp>=3.9.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "pyyaml>=6.0",
+    "python-dotenv>=1.0.0",
+    "python-json-logger>=2.0.7",
+    "aiosqlite>=0.19.0",
+    "rich>=13.0.0",
+    "py-clob-client>=0.19.0",
+    "web3>=6.0.0",
+    "eth-account>=0.8.0",
+    "ib_insync>=0.9.86",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.23.0",
+    "ruff>=0.1.0",
+]
+
+[project.scripts]
+pmarb = "src.main:cli"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B"]

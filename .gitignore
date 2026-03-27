@@ -1,0 +1,35 @@
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Data (runtime-generated)
+data/
+signal_config.json
+
+# Logs
+*.log
+nohup.out
+
+# System
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# External / vendored
+polymarket-autotrader/
+
+# Research notes (local only)
+*.txt
