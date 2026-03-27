@@ -88,21 +88,24 @@ class LatencyEngine:
         Returns: (premium_per_share, delta, spot_price)
         """
         tf = self._latest_tradfi.get(self.hedge_symbol)
-        if not tf or not tf.options:
-            if tf and tf.iv_atm > 0 and tf.spot > 0:
-                import math
-                t = 30 / 365
-                premium = tf.spot * tf.iv_atm * math.sqrt(t) * 0.4
-                return premium, 0.25, tf.spot
+        if not tf or tf.spot <= 0:
             return 0.0, 0.0, 0.0
 
-        calls = [o for o in tf.options if o.right == "C" and o.ask > 0]
-        if not calls:
-            return 0.0, 0.0, tf.spot
+        if tf.options:
+            calls = [o for o in tf.options if o.right == "C" and (o.ask > 0 or o.bid > 0)]
+            if calls:
+                calls.sort(key=lambda o: abs(abs(o.delta) - 0.25))
+                best = calls[0]
+                price = best.ask if best.ask > 0 else best.bid * 1.05
+                return price, abs(best.delta), tf.spot
 
-        calls.sort(key=lambda o: abs(abs(o.delta) - 0.25))
-        best = calls[0]
-        return best.ask, abs(best.delta), tf.spot
+        if tf.iv_atm > 0:
+            import math
+            t = 30 / 365
+            premium = tf.spot * tf.iv_atm * math.sqrt(t) * 0.4
+            return premium, 0.25, tf.spot
+
+        return 0.0, 0.0, tf.spot
 
     def _run_pnl_validation(
         self, pm: PMPriceEvent, hedge_type_str: str

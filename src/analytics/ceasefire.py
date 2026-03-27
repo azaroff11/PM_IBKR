@@ -109,25 +109,26 @@ class CeasefireDetector:
         Returns: (premium_per_share, delta, spot_price)
         """
         tf = self._latest_tradfi.get(self.hedge_symbol)
-        if not tf or not tf.options:
-            # Fallback: estimate from IV
-            if tf and tf.iv_atm > 0 and tf.spot > 0:
-                # Black-Scholes approximation for 30d ATM: premium ≈ spot × IV × sqrt(T)
-                import math
-                t = 30 / 365
-                premium = tf.spot * tf.iv_atm * math.sqrt(t) * 0.4  # OTM discount
-                return premium, 0.25, tf.spot
+        if not tf or tf.spot <= 0:
             return 0.0, 0.0, 0.0
 
-        # Find OTM put closest to target delta
-        puts = [o for o in tf.options if o.right == "P" and o.ask > 0]
-        if not puts:
-            return 0.0, 0.0, tf.spot
+        # Try real options data first
+        if tf.options:
+            puts = [o for o in tf.options if o.right == "P" and (o.ask > 0 or o.bid > 0)]
+            if puts:
+                puts.sort(key=lambda o: abs(abs(o.delta) - 0.25))
+                best = puts[0]
+                price = best.ask if best.ask > 0 else best.bid * 1.05  # Use bid + spread
+                return price, abs(best.delta), tf.spot
 
-        # Sort by distance to 0.25 delta (target)
-        puts.sort(key=lambda o: abs(abs(o.delta) - 0.25))
-        best = puts[0]
-        return best.ask, abs(best.delta), tf.spot
+        # Fallback: Black-Scholes estimate from IV ATM
+        if tf.iv_atm > 0:
+            import math
+            t = 30 / 365
+            premium = tf.spot * tf.iv_atm * math.sqrt(t) * 0.4  # OTM discount
+            return premium, 0.25, tf.spot
+
+        return 0.0, 0.0, tf.spot
 
     async def _evaluate(self) -> None:
         """Core logic: detect fake ceasefire and generate signal."""

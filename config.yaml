@@ -3,36 +3,25 @@
 # ══════════════════════════════════════
 
 polymarket:
-  # Real Polymarket slugs (verified via Gamma API 2026-03-26)
+  # Verified via Gamma API 2026-03-27 (all active, not closed)
   markets:
     ceasefire:
-      slug: "us-x-iran-ceasefire-by-march-31"
-      condition_id: "0x3c6bcb7da14ea576e5af25547dbd96f2bb24ac34e748e76aecff2ee9195dd1ac"
-      description: "US x Iran ceasefire by March 31"
+      slug: "us-x-iran-ceasefire-by-may-31-313-373-916"
+      description: "US x Iran ceasefire by May 31"
       resolution_source: "consensus_of_reporting"
       bilateral_required: true
-    iran_forces_march:
-      slug: "us-forces-enter-iran-by-march-31-222-191-243-517-878-439-519"
-      condition_id: "0x306d10d4a4d51b41910dbc779ca00908bd917c131541c5c42bbbc736258d2d56"
-      description: "US forces enter Iran by March 31"
+    ceasefire_apr15:
+      slug: "us-x-iran-ceasefire-by-april-15-182-528-637"
+      description: "US x Iran ceasefire by April 15"
       resolution_source: "consensus_of_reporting"
-    iran_forces_april:
-      slug: "us-forces-enter-iran-by-april-30-899"
-      condition_id: "0x6d0e09d0f04572d9b1adad84703458b0297bc5603b69dccbde93147ee4443246"
-      description: "US forces enter Iran by April 30"
-      resolution_source: "consensus_of_reporting"
-    iran_regime:
-      slug: "will-the-iranian-regime-fall-by-march-31"
-      condition_id: "0x61ce3773237a948584e422de72265f937034af418a8b703e3a860ea62e59ff36"
-      description: "Will the Iranian regime fall by March 31"
-      resolution_source: "consensus_of_reporting"
-    israel_lebanon:
-      slug: "will-israel-take-military-action-in-lebanon-on-march-20-2026"
-      condition_id: "0x77508b9cb5962ff587890f79e3e39a1789384405b6ff530afbccb9d70743352a"
-      description: "Israel military action against Lebanon"
-      resolution_source: "consensus_of_reporting"
+      bilateral_required: true
+    hormuz_strait:
+      slug: "strait-of-hormuz-traffic-returns-to-normal-by-april-30"
+      description: "Strait of Hormuz traffic returns to normal by end of April"
+      resolution_source: "imf_portwatch"
 
   poll_interval_sec: 5
+
 
 tradfi:
   instruments:
